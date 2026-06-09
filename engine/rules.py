@@ -45,7 +45,7 @@ class QueryOptimizerRules(KnowledgeEngine):
         self.record(RecommendationFact(
             recommendation_id=next_id(),
             category="SCAN_SELECTION",
-            recommendation_text=f"Use Full Table Scan on '{rel}' - table is large with no suitable index",
+            recommendation_text="Use Full Table Scan - table is large with no suitable index",
             reasoning="Source: Database System Concepts Ch16 - Full Scan is the only option when no index exists",
             priority="HIGH",
             expected_improvement="Avoid using non-existent index",
@@ -57,7 +57,7 @@ class QueryOptimizerRules(KnowledgeEngine):
         self.record(RecommendationFact(
             recommendation_id=next_id(),
             category="SCAN_SELECTION",
-            recommendation_text=f"Use Index Scan on '{rel}' instead of Full Scan for better performance",
+            recommendation_text="Use Index Scan instead of Full Scan for better performance",
             reasoning="Source: dbjournal.ro - Index Scan significantly reduces blocks read when selectivity is high",
             priority="HIGH",
             expected_improvement="Reduce I/O by up to 90%",
@@ -69,8 +69,8 @@ class QueryOptimizerRules(KnowledgeEngine):
         self.record(RecommendationFact(
             recommendation_id=next_id(),
             category="SCAN_SELECTION",
-            recommendation_text=f"'{rel}' is small - use Full Table Scan instead of Index Scan",
-            reasoning="Source: Database System Concepts Ch16 - Index access + table read cost exceeds Full Scan for small tables; Full Scan is cheaper",
+            recommendation_text="Table is small - use Full Table Scan even if an index exists",
+            reasoning="Source: Database System Concepts Ch16 - Index ACCESS + table read cost may exceed Full Scan for small tables",
             priority="MEDIUM",
             expected_improvement="Avoid unnecessary index overhead for small tables",
             applies_to="access_path"

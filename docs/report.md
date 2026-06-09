@@ -405,7 +405,7 @@ def rule_index_scan(self):
 ### قائمة المخططات:
 
 | الرقم | اسم المخطط | الوصف |
-|---|---|---|---|
+|---|---|---|
 | 1 | General System Architecture | البنية العامة للنظام |
 | 2 | Query Classification | تصنيف الاستعلام |
 | 3 | Full Scan vs Index Scan | قرار مسار الوصول |
