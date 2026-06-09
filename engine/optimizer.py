@@ -1,43 +1,29 @@
-from engine.facts import *
+from experta import Fact
 from engine.rules import QueryOptimizerRules
+
+PRIORITY_ORDER = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
+
+def sort_by_priority(recs: list) -> list:
+    return sorted(recs, key=lambda r: PRIORITY_ORDER.get(r["priority"], 0), reverse=True)
 
 class QueryOptimizer:
     def __init__(self):
         self.engine = QueryOptimizerRules()
 
-    def analyze(self, query_facts: QueryFact, table_facts: list = None,
-                index_facts: list = None, join_facts: list = None,
-                workload_fact: WorkloadFact = None, stats_fact: StatsFact = None):
+    def analyze(self, facts: list = None):
         self.engine.reset()
-
-        self.engine.declare(query_facts)
-
-        if table_facts:
-            for tf in table_facts:
-                self.engine.declare(tf)
-
-        if index_facts:
-            for inf in index_facts:
-                self.engine.declare(inf)
-
-        if join_facts:
-            for jf in join_facts:
-                self.engine.declare(jf)
-
-        if workload_fact:
-            self.engine.declare(workload_fact)
-
-        if stats_fact:
-            self.engine.declare(stats_fact)
-
+        for f in facts or []:
+            self.engine.declare(f)
         self.engine.run()
 
         unique_recs = self._deduplicate(self.engine.recommendations)
+        sorted_recs = sort_by_priority(unique_recs)
+        reasoning_log = [f"[{r['priority']}] {r['category']}: {r['recommendation_text']} => {r['reasoning']}" for r in sorted_recs]
 
         return {
-            "recommendations": unique_recs,
-            "reasoning_log": self.engine.reasoning_log,
-            "total_recommendations": len(unique_recs)
+            "recommendations": sorted_recs,
+            "reasoning_log": reasoning_log,
+            "total_recommendations": len(sorted_recs)
         }
 
     @staticmethod
@@ -50,9 +36,3 @@ class QueryOptimizer:
                 seen.add(key)
                 result.append(rec)
         return result
-
-    def _fact_summary(self, name: str, fact) -> str:
-        if fact is None:
-            return ""
-        lines = [f"  {k}: {v}" for k, v in fact.items() if not k.startswith('_')]
-        return f"--- {name} ---\n" + "\n".join(lines)

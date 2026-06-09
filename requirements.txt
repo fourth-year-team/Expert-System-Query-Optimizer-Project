@@ -1,3 +1,4 @@
 experta>=1.9.0
 frozendict>=2.3.0
 schema>=0.7.5
+sqlparse>=0.5.0

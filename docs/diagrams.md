@@ -152,13 +152,23 @@ flowchart TD
     J -->|"No"| L{"Sort + Merge<br/>cost acceptable?"}
     L -->|"Yes"| M["Merge Join"]
     L -->|"No"| N["Hash Join"]
+
+    A2["Additional Options"] --> O{"Subquery/<br/>Negation?"}
+    O -->|"IN / EXISTS"| P["Semi-Join<br/>(Eliminates duplicates early)"]
+    O -->|"NOT IN / NOT EXISTS"| Q["Anti-Join<br/>(Efficient negation)"]
+    O -->|"No"| R{"Stats accurate?"}
+    R -->|"Yes"| S["Standard Join"]
+    R -->|"No"| T["Adaptive Join<br/>(Switches mid-execution)"]
 ```
 
 **شرح المخطط:** اختيار خوارزمية JOIN المناسبة يعتمد على:
 - **Nested Loop Join:** مثالي عندما تكون إحدى العلاقات صغيرة والأخرى مفهرسة
 - **Hash Join:** الأفضل للعلاقات الكبيرة بدون فهارس (شروط المساواة)
 - **Merge Join:** مناسب عندما تكون البيانات مرتبة مسبقاً أو مطلوب ترتيب النتائج
-المصدر: Database System Concepts Ch16.5 والمقال في dbjournal.ro.
+- **Semi-Join:** للاستعلامات التي تستخدم IN/EXISTS — يوقف عند أول تطابق
+- **Anti-Join:** للاستعلامات التي تستخدم NOT IN/NOT EXISTS — معالجة فعالة للنفي
+- **Adaptive Join:** يختار ديناميكياً بين Hash Join و Nested Loop في منتصف التنفيذ
+المصدر: Database System Concepts Ch16.5، dbjournal.ro، Modern DBMS.
 
 ---
 
@@ -192,26 +202,35 @@ flowchart TD
     A["Subquery Detected"] --> B{"Correlated?"}
     
     B -->|"Yes"| C{"Has<br/>Aggregation?"}
-    C -->|"No"| D["Rewrite as JOIN"]
-    C -->|"Yes"| E["Materialize Subquery<br/>(Use temp table)"]
+    C -->|"No"| D["Rewrite as JOIN<br/>(Use Semi-Join semantics)"]
+    C -->|"Yes"| E{"Temp table<br/>allowed?"}
+    E -->|"Yes"| F["Materialize Subquery<br/>(Avoid N+1 execution)"]
+    E -->|"No"| G["Keep subquery<br/>(no better option)"]
     
-    B -->|"No"| F{"Uses IN?"}
-    F -->|"Yes"| G["Rewrite as EXISTS<br/>(Semi Join)"]
-    F -->|"No"| H["Uses NOT IN?"]
-    H -->|"Yes"| I{"NULL possible?"}
-    I -->|"Yes"| J["Rewrite as NOT EXISTS"]
-    I -->|"No"| K["Rewrite as NOT EXISTS<br/>(Better performance)"]
-    H -->|"No"| L["Keep as-is or<br/>consider JOIN"]
+    B -->|"No"| H{"Uses IN?"}
+    H -->|"Yes"| I["Rewrite as EXISTS<br/>(Semi-Join / Early termination)"]
+    H -->|"No"| J{"Uses NOT IN?"}
+    J -->|"Yes"| K{"NULL possible?"}
+    K -->|"Yes"| L["Rewrite as NOT EXISTS<br/>(Anti-Join / Correctness)"]
+    K -->|"No"| M["Rewrite as NOT EXISTS<br/>(Anti-Join / Better performance)"]
+    J -->|"No"| N{"Has CTE (WITH)?"}
+    N -->|"Yes"| O{"Temp table<br/>allowed?"}
+    O -->|"Yes"| P["Materialize CTE<br/>(Avoid repeated evaluation)"]
+    O -->|"No"| Q["Keep CTE inline"]
+    N -->|"No"| R["Keep as-is or<br/>consider JOIN"]
     
-    M["Benefit:<br/>Avoid N+1 execution"] -.-> D
-    N["Benefit:<br/>Early termination"] -.-> G
+    S["Benefit:<br/>Avoid N+1 execution"] -.-> D
+    T["Benefit:<br/>Early termination"] -.-> I
+    U["Benefit:<br/>Efficient negation"] -.-> L
+    V["Benefit:<br/>Compute once"] -.-> P
 ```
 
 **شرح المخطط:** إعادة كتابة الـ Subquery يمكن أن تحسن الأداء بشكل جذري. القاعدة:
-- الـ Subquery الترابطي (Correlated) يتحول إلى JOIN (إذا لم يكن فيه تجميع)
+- الـ Subquery الترابطي (Correlated) يتحول إلى JOIN مع دلالات Semi-Join
 - الـ IN يتحول إلى EXISTS (توقف عند أول تطابق)
 - الـ NOT IN يتحول إلى NOT EXISTS (تجنب مشاكل NULL + أداء أفضل)
-المصدر: Database System Concepts Ch16.3.2 و dbjournal.ro.
+- الـ CTE يتم تجسيده (Materialize) في جدول مؤقت إذا سمحت الذاكرة
+المصدر: Database System Concepts Ch16.3.2، dbjournal.ro، Medium Guide.
 
 ---
 
@@ -374,6 +393,7 @@ flowchart TB
         A1["Query Properties"]
         A2["Table Statistics"]
         A3["Index Information"]
+        A4["Workload Profile"]
     end
 
     subgraph "Rule Engine (Experta)"
@@ -392,6 +412,13 @@ flowchart TB
         B13["Rule: Cost Analysis"]
         B14["Rule: Intermediate Result"]
         B15["Rule: UNION Optimization"]
+        B16["Rule: Semi-Join / Anti-Join"]
+        B17["Rule: Partition Pruning"]
+        B18["Rule: Parallel Execution"]
+        B19["Rule: CTE Materialization"]
+        B20["Rule: View Pushdown"]
+        B21["Rule: Adaptive Join"]
+        B22["Rule: Workload Strategy"]
     end
 
     subgraph "Output Layer"
@@ -400,6 +427,7 @@ flowchart TB
         C3["Index<br/>Recommendations"]
         C4["Statistics<br/>Recommendations"]
         C5["Cost-based<br/>Plan Selection"]
+        C6["Execution<br/>Strategy"]
     end
 
     A1 --> B1
@@ -414,11 +442,18 @@ flowchart TB
     A1 --> B10
     A1 --> B11
     A1 --> B12
+    A1 --> B16
+    A1 --> B17
+    A1 --> B19
+    A1 --> B20
+    A1 --> B21
     A2 --> B12
     A2 --> B13
     A3 --> B1
     A3 --> B10
     A3 --> B11
+    A4 --> B18
+    A4 --> B22
 
     B1 --> C1
     B2 --> C2
@@ -435,9 +470,16 @@ flowchart TB
     B13 --> C5
     B14 --> C2
     B15 --> C2
+    B16 --> C1
+    B17 --> C1
+    B18 --> C6
+    B19 --> C2
+    B20 --> C2
+    B21 --> C1
+    B22 --> C6
 ```
 
-**شرح المخطط:** هذا هو المخطط النهائي الذي يوضح كيف تتكامل جميع القرارات. تبدأ العملية من طبقة الإدخال (خصائص الاستعلام، إحصاءات الجدول، معلومات الفهارس)، تمر عبر 15+ قاعدة في محرك Experta، وتنتج توصيات في 5 فئات رئيسية: مسار الوصول، إعادة كتابة الاستعلام، الفهارس، الإحصاءات، واختيار الخطة بناءً على الكلفة.
+**شرح المخطط:** هذا هو المخطط النهائي الذي يوضح كيف تتكامل جميع القرارات. تبدأ العملية من طبقة الإدخال (خصائص الاستعلام، إحصاءات الجدول، معلومات الفهارس، ملف عبء العمل)، تمر عبر 22 قاعدة في محرك Experta، وتنتج توصيات في 6 فئات رئيسية: مسار الوصول، إعادة كتابة الاستعلام، الفهارس، الإحصاءات، اختيار الخطة، وإستراتيجية التنفيذ.
 
 ---
 
@@ -575,6 +617,7 @@ flowchart TB
     QCLASS --> TABLES["Analyze Tables"]
     QCLASS --> INDEXES["Analyze Indexes"]
     QCLASS --> JOINS["Analyze Joins"]
+    QCLASS --> WORKLOAD["Analyze Workload"]
 
     TABLES --> STATS{"Statistics<br/>Fresh?"}
     STATS -->|"No"| REC1["⚠ UPDATE STATISTICS"]
@@ -591,27 +634,56 @@ flowchart TB
 
     SCAN -->|"Index"| PUSH_SEL["Push Selection Down"]
     SCAN -->|"Full"| PUSH_SEL
+
+    TABLES --> PART{"Partitioned<br/>Table?"}
+    PART -->|"Yes| PART_KEY{"Partition key<br/>in WHERE?"}
+    PART_KEY -->|"Yes"| PRUNE["✂ Partition Pruning"]
+    PART_KEY -->|"No"| WARN["⚠ Scan all partitions"]
+    PRUNE --> PUSH_SEL
+    WARN --> PUSH_SEL
+    PART -->|"No"| PUSH_SEL
+    
+    WORKLOAD --> HW{"Parallel<br/>Available?"}
+    HW -->|"Yes & Large table"| PAR["⚡ Parallel Execution"]
+    HW -->|"No / Small table"| SEQ["Sequential Execution"]
+    PAR --> PUSH_SEL
+    SEQ --> PUSH_SEL
     
     JOINS --> JOIN_ALG{"Choose Join<br/>Algorithm"}
     JOIN_ALG -->|"Small+Index"| NLJ["Nested Loop Join"]
     JOIN_ALG -->|"Large+Equal"| HJ["Hash Join"]
     JOIN_ALG -->|"Sorted"| MJ["Merge Join"]
+    JOIN_ALG -->|"IN/EXISTS"| SEMI["Semi-Join"]
+    JOIN_ALG -->|"NOT IN/NOT EXISTS"| ANTI["Anti-Join"]
+    JOIN_ALG -->|"Stats uncertain"| ADAPT["Adaptive Join"]
     
     PUSH_SEL --> PUSH_PROJ["Push Projection Down"]
     PUSH_PROJ --> JOIN_ORDER{"Optimize<br/>Join Order?"}
     JOIN_ORDER -->|"Yes (3+ tables)"| REORDER["Reorder: Smallest First"]
-    JOIN_ORDER -->|"No"| SUB{"Subquery?"}
+    JOIN_ORDER -->|"No"| SUB{"Subquery/CTE?"}
     
     REORDER --> SUB
-    SUB -->|"Correlated"| REWRITE1["↻ Rewrite as JOIN"]
-    SUB -->|"IN"| REWRITE2["→ Use EXISTS"]
-    SUB -->|"NOT IN"| REWRITE3["→ Use NOT EXISTS"]
+    SUB -->|"Correlated"| REWRITE1["↻ Rewrite as JOIN (Semi-Join)"]
+    SUB -->|"IN"| REWRITE2["→ Use EXISTS / Semi-Join"]
+    SUB -->|"NOT IN"| REWRITE3["→ Use NOT EXISTS / Anti-Join"]
+    SUB -->|"CTE (WITH)"| CTE{"Referenced<br/>multiple times?"}
+    CTE -->|"Yes & Temp allowed"| MATERIALIZE["Materialize CTE"]
+    CTE -->|"No"| GROUP
+    MATERIALIZE --> GROUP
+    SUB -->|"View"| VIEW_PUSH["Push predicates through view"]
+    VIEW_PUSH --> GROUP
     SUB -->|"None"| GROUP{"GROUP BY?"}
     
     GROUP -->|"WHERE+HAVING"| WH_REWRITE["Move conditions to WHERE"]
     GROUP -->|"DISTINCT"| DIST_REWRITE{"PK in SELECT?"}
     DIST_REWRITE -->|"Yes"| DROP_DIST["Drop DISTINCT"]
     DIST_REWRITE -->|"No"| KEEP_DIST["Keep DISTINCT"]
+    
+    WORKLOAD --> WL{"Workload<br/>Type?"}
+    WL -->|"Read-heavy"| READ_IDX["Maintain indexes<br/>Consider covering indexes"]
+    WL -->|"Write-heavy"| WRITE_IDX["Minimize indexes<br/>Drop unused indexes"]
+    READ_IDX --> FINAL
+    WRITE_IDX --> FINAL
     
     FINAL["📋 FINAL OPTIMIZATION REPORT<br/>with reasoning for each decision"]
     
@@ -625,6 +697,9 @@ flowchart TB
     NLJ --> FINAL
     HJ --> FINAL
     MJ --> FINAL
+    SEMI --> FINAL
+    ANTI --> FINAL
+    ADAPT --> FINAL
     KEEP_DIST --> FINAL
     DROP_DIST --> FINAL
     PUSH_SEL --> FINAL
@@ -635,7 +710,177 @@ flowchart TB
 
 ---
 
-## Diagram 21: Deduplication Output Layer
+## Diagram 21: Semi-Join vs Anti-Join Decision
+
+```mermaid
+flowchart TD
+    A["Subquery or Join Decision"] --> B{"Purpose?"}
+    
+    B -->|"Check existence<br/>(IN / EXISTS)"| C["Semi-Join Path"]
+    B -->|"Check non-existence<br/>(NOT IN / NOT EXISTS)"| D["Anti-Join Path"]
+    
+    subgraph "Semi-Join"
+        C1["Scan outer relation"]
+        C2["For each outer row,<br/>probe inner relation"]
+        C3["Stop at first match"]
+        C4["Yield outer row once"]
+        C1 --> C2 --> C3 --> C4
+    end
+    
+    subgraph "Anti-Join"
+        D1["Scan outer relation"]
+        D2["For each outer row,<br/>probe inner relation"]
+        D3["If NO match found,"]
+        D4["Yield outer row"]
+        D1 --> D2 --> D3 --> D4
+    end
+    
+    E["Benefit over Subquery:<br/>- Stops at first match<br/>- No duplicate elimination needed<br/>- Set semantics built-in"] -.-> C4
+    F["Benefit over NOT IN:<br/>- Handles NULL correctly<br/>- Early termination possible"] -.-> D4
+```
+
+**شرح المخطط:** Semi-Join و Anti-John هما خوارزميتان متخصصتان للتعامل مع الاستعلامات الفرعية.
+- **Semi-Join:** للاستعلامات التي تستخدم IN/EXISTS — يمسح العلاقة الخارجية ويتوقف عند أول تطابق في العلاقة الداخلية. هذا يمنع إنتاج صفوف مكررة ويحسن الأداء.
+- **Anti-Join:** للاستعلامات التي تستخدم NOT IN/NOT EXISTS — يمسح العلاقة الخارجية ويعيد الصفوف التي ليس لها تطابق في العلاقة الداخلية. يتجنب مشاكل NULL التي يعاني منها NOT IN.
+المصدر: Database System Concepts Ch16.
+
+---
+
+## Diagram 22: Partition Pruning Decision
+
+```mermaid
+flowchart TD
+    A["Query on Partitioned Table"] --> B{"Does WHERE clause<br/>use the partition key?"}
+    
+    B -->|"Yes"| C["Identify relevant partitions"]
+    C --> D["Eliminate non-matching partitions"]
+    D --> E["Scan only matching partitions"]
+    E --> F["Benefit: Skip up to 90%<br/>of irrelevant data"]
+    
+    B -->|"No"| G["All partitions must be scanned"]
+    G --> H["Full table scan across all partitions"]
+    H --> I["Warning: Partition key not used<br/>- Consider adding it to WHERE"]
+    
+    J["Example: Table partitioned by sale_date"] -.-> K["WHERE sale_date BETWEEN '2024-01-01' AND '2024-01-31'<br/>→ Scan only 1 partition (Jan 2024)"]
+    J -.-> L["WHERE region = 'East'<br/>→ No partition key → Scan ALL 12 partitions"]
+```
+
+**شرح المخطط:** تقسيم الجداول (Partitioning) يحسن الأداء عندما يستخدم الاستعلام مفتاح التقسيم (Partition Key) في WHERE. يقوم النظام بقص (Prune) الأقسام غير الضرورية ومسح الأقسام ذات الصلة فقط. إذا لم يستخدم الاستعلام مفتاح التقسيم، يجب مسح جميع الأقسام مما يلغي فائدة التقسيم.
+المصدر: Database System Concepts Ch16.
+
+---
+
+## Diagram 23: Parallel Execution Strategy
+
+```mermaid
+flowchart TD
+    A["Query Analysis"] --> B{"Hardware supports<br/>parallelism?"}
+    
+    B -->|"No"| C["Sequential execution<br/>(no parallel option available)"]
+    B -->|"Yes"| D{"Query involves<br/>large tables?"}
+    
+    D -->|"No / Small tables"| E["Sequential execution<br/>(parallel overhead not worth it)"]
+    D -->|"Yes"| F["Enable Parallel Execution"]
+    
+    F --> G["Split operations across CPU cores"]
+    G --> H1["Parallel Scan: Split table into N ranges"]
+    G --> H2["Parallel Sort: Each core sorts its range"]
+    G --> H3["Parallel Join: Hash/merge join across cores"]
+    
+    H1 --> I["Linear speedup<br/>proportional to<br/>CPU core count"]
+    
+    J["Considerations:"] -.-> K["- Memory overhead for parallelism"]
+    J -.-> L["- CPU cost of thread management"]
+    J -.-> M["- I/O contention on shared storage"]
+```
+
+**شرح المخطط:** التنفيذ المتوازي (Parallel Execution) يوزع عمليات الاستعلام الثقيلة (Scan، Sort، Join) عبر أنوية المعالجة المتعددة. هذا مفيد بشكل خاص للجداول الكبيرة والاستعلامات المعقدة. التحسن النظري خطي مع عدد الأنوية، لكن يجب مراعاة كلفة إدارة الخيوط والذاكرة.
+المصدر: Database System Concepts Ch16.
+
+---
+
+## Diagram 24: CTE Materialization Decision
+
+```mermaid
+flowchart TD
+    A["CTE (WITH clause) Detected"] --> B{"How many times is<br/>the CTE referenced?"}
+    
+    B -->|"Once"| C["Inline the CTE<br/>(No materialization needed)"]
+    B -->|"Multiple times"| D{"Temp table<br/>allowed?"}
+    
+    D -->|"Yes"| E["Materialize CTE into temp table"]
+    D -->|"No"| F["Keep CTE inline<br/>(may be re-evaluated)"]
+    
+    E --> G["Compute CTE once"]
+    G --> H["Store results in temp table"]
+    H --> I["All references use<br/>the materialized result"]
+    
+    J["Benefits of Materialization:"] -.-> K["- Compute once, use many times"]
+    J -.-> L["- Avoids repeated Subquery execution"]
+    J -.-> M["- Can index the temp table"]
+    
+    N["Cost of Materialization:"] -.-> O["- Disk/memory for temp storage"]
+    N -.-> P["- Writing overhead"]
+```
+
+**شرح المخطط:** CTE (Common Table Expression / WITH clause) يمكن تجسيده (Materialize) في جدول مؤقت إذا تمت الإشارة إليه مرات متعددة في الاستعلام الرئيسي. هذا يمنع إعادة تنفيذ نفس الاستعلام لكل إشارة. إذا تمت الإشارة إلى CTE مرة واحدة فقط، فمن الأفضل تركه Inline لتجنب كلفة الكتابة في الجدول المؤقت.
+المصدر: Database System Concepts Ch16.
+
+---
+
+## Diagram 25: Predicate Pushdown Across Views
+
+```mermaid
+flowchart TD
+    subgraph "Before Optimization"
+        A["SELECT * FROM (SELECT * FROM employees WHERE salary > 50000) v WHERE v.dept_id = 10"] --> B["Query View v"]
+        B --> C["Scan all rows of v"]
+        C --> D["Filter: dept_id = 10"]
+        D --> E["Large intermediate result"]
+    end
+
+    subgraph "After Optimization"
+        F["Push WHERE through view"] --> G["Rewrite: SELECT * FROM (SELECT * FROM employees WHERE salary > 50000 AND dept_id = 10) v"]
+        G --> H["Push both predicates down"]
+        H --> I["Scan employees with combined filter"]
+        I --> J["Much smaller intermediate result"]
+    end
+
+    K["Rule: Predicates on views can be pushed into the view definition"] -.-> L["Benefit: Filters applied earlier = less data to process"]
+```
+
+**شرح المخطط:** عندما يستخدم الاستعلام VIEW، يمكن دفع شروط WHERE إلى داخل تعريف الـ VIEW. هذا يسمح بتطبيق التصفية مباشرة على الجداول الأساسية، مما يقلل النتائج الوسيطة ويحسن الأداء. تعتبر هذه التقنية امتداداً لقاعدة Push Selection Down.
+المصدر: Database System Concepts Ch16.
+
+---
+
+## Diagram 26: Adaptive Join Decision
+
+```mermaid
+flowchart TD
+    A["Large Join with<br/>Uncertain Cardinality"] --> B{"Are statistics<br/>accurate?"}
+    
+    B -->|"Yes"| C["Use standard Join selection<br/>(Hash / Merge / NLJ based on cost)"]
+    B -->|"No / Uncertain"| D["Use Adaptive Join"]
+    
+    D --> E["Start with Hash Join<br/>(build phase for inner relation)"]
+    E --> F{"Inner relation<br/>size matches estimate?"}
+    
+    F -->|"Yes"| G["Continue with Hash Join"]
+    F -->|"No - smaller than expected"| H["Switch to Nested Loop Join<br/>(Use index on inner)"]
+    F -->|"No - larger than expected"| I["Continue with Hash Join<br/>(it scales better for large data)"]
+    
+    J["Benefit:"] -.-> K["- No 'wrong join algorithm' risk"]
+    J -.-> L["- Adaptive to runtime conditions"]
+    J -.-> M["- Robust when statistics are outdated"]
+```
+
+**شرح المخطط:** Adaptive Join هي تقنية حديثة (متوفرة في SQL Server 2017+ و PostgreSQL) تسمح باختيار خوارزمية JOIN في منتصف التنفيذ بناءً على الإحصاءات الفعلية في وقت التشغيل. تبدأ بـ Hash Join، وإذا تبين أن العلاقة الداخلية أصغر من المتوقع، تتحول إلى Nested Loop Join تلقائياً. هذا يوفر أداءً قوياً حتى عندما تكون إحصاءات النظام قديمة أو غير دقيقة.
+المصدر: Modern DBMS (SQL Server 2017+, PostgreSQL).
+
+---
+
+## Diagram 27: Deduplication Output Layer
 
 ```mermaid
 flowchart TD
@@ -663,36 +908,7 @@ flowchart TD
 
 ---
 
-## Diagram 22: NOT IN to NOT EXISTS Transformation
-
-```mermaid
-flowchart TD
-    A["Query with NOT IN subquery"] --> B{"Subquery result<br/>contains NULL?"}
-    
-    B -->|"Yes/Unknown"| C["NOT IN returns EMPTY result<br/>(NULL semantics break it)"]
-    C --> D["⚠ Correctness issue!"]
-    D --> E["Rewrite as NOT EXISTS"]
-    
-    B -->|"No NULLs"| F["NOT IN works correctly<br/>but may be slow"]
-    F --> G["NOT IN scans ALL values<br/>in subquery result"]
-    G --> H["Rewrite as NOT EXISTS<br/>for better performance"]
-    
-    E --> I["NOT EXISTS benefits:"]
-    H --> I
-    
-    I --> J["Early termination<br/>(stops at first match)"]
-    I --> K["Correct NULL handling"]
-    I --> L["Semi-join optimization"]
-    I --> M["Better index usage"]
-    
-    N["Source: Database System Concepts Ch16"] -.-> O["NOT EXISTS is always preferred<br/>over NOT IN for subqueries"]
-```
-
-**شرح المخطط:** NOT IN يعاني من مشكلة معروفة: إذا كانت نتيجة Subquery تحتوي على NULL، فإن NOT IN يرجع مجموعة فارغة (لأن NULL = ANY (subquery) يُقيّم إلى UNKNOWN). NOT EXISTS يتعامل مع NULL بشكل صحيح ويوفر أداء أفضل بفضل التوقف عند أول تطابق (Early Termination). المصدر: Database System Concepts Ch16 و dbjournal.ro.
-
----
-
-## Diagram 23: Clustered Index for Range Queries
+## Diagram 28: Clustered Index for Range Queries
 
 ```mermaid
 flowchart TD
@@ -724,39 +940,7 @@ flowchart TD
 
 ---
 
-## Diagram 24: Composite Index Decision
-
-```mermaid
-flowchart TD
-    A["Multiple WHERE conditions detected"] --> B{"Which columns are<br/>most selective?"}
-    
-    B --> C["Order columns by selectivity<br/>(most selective first)"]
-    C --> D["Candidate index:<br/>(col1, col2, col3)"]
-    
-    D --> E{"Column order<br/>in queries?"}
-    E -->|"col1, col2 always together"| F["Good: Single composite index"]
-    E -->|"col1 alone, col2 alone"| G["Consider separate indexes"]
-    E -->|"col2 without col1"| H["⚠ col2 won't use composite<br/>if col1 is leading column"]
-    
-    F --> I["Composite index benefits:"]
-    G --> I
-    
-    I --> J["Index covering more queries"]
-    I --> K["Reduced index maintenance"]
-    I --> L["Better than multiple single indexes"]
-    
-    M["Rules of thumb:"] -.-> N["Leading column should be<br/>most selective or most used"]
-    M -.-> O["Max 3-5 columns per composite"]
-    M -.-> P["Consider all queries, not just one"]
-    
-    Q["Source: Database System Concepts Ch16"] -.-> R["Composite index design is critical<br/>for multi-condition queries"]
-```
-
-**شرح المخطط:** الفهرس المركب (Composite Index) هو فهرس على عدة أعمدة معاً. ترتيب الأعمدة في الفهرس المركب مهم جداً: يجب وضع العمود الأكثر انتقائية أولاً. كما أن الفهرس المركب لا يمكن استخدامه إذا لم يكن العمود الأول (Leading Column) موجوداً في الشرط. المصدر: Database System Concepts Ch16 و dbjournal.ro.
-
----
-
-## Diagram 25: Covering Index Scan
+## Diagram 29: Covering Index Scan
 
 ```mermaid
 flowchart TD
@@ -786,40 +970,7 @@ flowchart TD
 
 ---
 
-## Diagram 26: Materialized Subquery Optimization
-
-```mermaid
-flowchart TD
-    A["Correlated Subquery detected"] --> B{"Allows temp table?"}
-    
-    B -->|"Yes"| C{"Has aggregation<br/>in subquery?"}
-    B -->|"No"| D["Cannot materialize"]
-    
-    C -->|"Yes"| E["Good candidate<br/>for materialization"]
-    C -->|"No"| F["Consider JOIN rewrite first"]
-    
-    E --> G["Materialization process:"]
-    G --> H["1. Execute subquery once"]
-    G --> I["2. Store result in temp table"]
-    G --> J["3. Add index on join column"]
-    G --> K["4. Join outer query with temp table"]
-    
-    H --> L["Before: N+1 executions"]
-    I --> L
-    K --> L
-    
-    L --> M["After: 1 execution + efficient join"]
-    
-    N["Performance impact:"] -.-> O["For N=1000 outer rows<br/>Before: 1000 subquery executions<br/>After: 1 subquery + 1 indexed join"]
-    
-    P["Source: Database System Concepts Ch16"] -.-> Q["Materialization converts correlated<br/>subquery into efficient join"]
-```
-
-**شرح المخطط:** تجسيد Subquery (Materialization) هو أسلوب تحسيني للـ Subqueries الترابطية (Correlated Subqueries). بدلاً من تنفيذ Subquery لكل صف من الاستعلام الخارجي (N+1 مرة)، يتم تنفيذ Subquery مرة واحدة وتخزين النتيجة في جدول مؤقت مع فهرس على عمود JOIN. هذا يحول المشكلة من N+1 تنفيذ إلى تنفيذ واحد + JOIN فعال. المصدر: Database System Concepts Ch16.
-
----
-
-## Diagram 27: LIMIT/OFFSET Pagination Optimization
+## Diagram 30: LIMIT/OFFSET Pagination Optimization
 
 ```mermaid
 flowchart TD
@@ -850,7 +1001,7 @@ flowchart TD
 
 ---
 
-## Diagram 28: OR Condition Rewriting with UNION ALL
+## Diagram 31: OR Condition Rewriting with UNION ALL
 
 ```mermaid
 flowchart TD
@@ -881,7 +1032,7 @@ flowchart TD
 
 ---
 
-## Diagram 29: UNION ALL vs UNION Decision
+## Diagram 32: UNION ALL vs UNION Decision
 
 ```mermaid
 flowchart TD
@@ -909,124 +1060,3 @@ flowchart TD
 ```
 
 **شرح المخطط:** UNION يقوم بإزالة التكرارات (Deduplication) بينما UNION ALL لا يفعل ذلك. عملية إزالة التكرار تتطلب فرز النتائج (Sort) مما يزيد من كلفة الاستعلام. إذا كنت متأكداً من عدم وجود تكرارات أو لا تمانع وجودها، استخدم UNION ALL للحصول على أداء أفضل. المصدر: Database System Concepts Ch16.
-
----
-
-## Diagram 30: Data Distribution and Histogram Statistics
-
-```mermaid
-flowchart TD
-    A["Query with WHERE condition"] --> B{"Data distribution<br/>known?"}
-    
-    B -->|"Yes"| C{"Histogram<br/>available?"}
-    B -->|"No"| D["⚠ Need data sampling"]
-    D --> E["Collect data distribution stats"]
-    E --> F["Create histogram"]
-    
-    C -->|"Yes"| G["Quality cardinality estimation"]
-    C -->|"No"| H["Using basic statistics<br/>(min, max, avg)"]
-    
-    H --> I["Basic assumption: uniform distribution"]
-    I --> J["Often inaccurate for real data"]
-    J --> K["Example: 'status = ERROR'<br/>with 1% rows → actual 0.01%"]
-    K --> L["Cost estimation error: 100x!"]
-    
-    G --> M["Histogram provides:"]
-    M --> N["Frequency distribution per bucket"]
-    M --> O["Accurate selectivity for each value"]
-    M --> P["Better join cardinality estimates"]
-    M --> Q["More reliable cost-based decisions"]
-    
-    R["Impact:"] -.-> S["Without histogram: 50-100% cost error<br/>With histogram: <10% cost error"]
-    
-    T["Source: Database System Concepts Ch16.4"] -.-> U["Histograms are essential for accurate<br/>cardinality estimation in real-world data"]
-```
-
-**شرح المخطط:** الـ Histogram (الرسم البياني للتوزيع) هو أداة إحصائية مهمة لتقدير انتقائية الشروط في الاستعلامات. بدون Histogram، يفترض محرك قاعدة البيانات توزيعاً منتظماً للبيانات (Uniform Distribution) وهو افتراض غير دقيق في معظم الحالات الواقعية. مع Histogram، يمكن تقدير عدد الصفوف المطابقة لشرط معين بدقة أكبر، مما يؤدي إلى خطط تنفيذ أفضل. المصدر: Database System Concepts Ch16.4 و Medium Guide.
-
----
-
-## Diagram 31: Workload Strategy Decision
-
-```mermaid
-flowchart TD
-    A["Workload Type Analysis"] --> B{"Query execution<br/>frequency?"}
-    
-    B -->|"HIGH<br/>(Hot queries)"| C["Prioritize optimization<br/>for this query"]
-    B -->|"MEDIUM"| D["Standard optimization"]
-    B -->|"LOW"| E["Minimal optimization<br/>(batch OK)"]
-    
-    C --> F{"Workload<br/>balance?"}
-    D --> F
-    E --> F
-    
-    F -->|"Read-Heavy<br/>(OLAP/Reporting)"| G["Strategy: Maximize read speed"]
-    G --> G1["✓ Create multiple indexes"]
-    G --> G2["✓ Use covering indexes"]
-    G --> G3["✓ Consider materialized views"]
-    G --> G4["✓ Denormalize if needed"]
-    
-    F -->|"Write-Heavy<br/>(OLTP)"| H["Strategy: Minimize write overhead"]
-    H --> H1["✓ Minimize indexes per table"]
-    H --> H2["✓ Drop unused indexes"]
-    H --> H3["✓ Use narrow indexes"]
-    H --> H4["✓ Avoid covering indexes"]
-    
-    F -->|"Mixed"| I["Strategy: Balance"]
-    I --> I1["✓ Index selective columns only"]
-    I --> I2["✓ Monitor index usage regularly"]
-    I --> I3["✓ Consider filtered indexes"]
-    I --> I4["✓ Partition large tables"]
-    
-    J["Response time critical?"] -.-> G
-    J -.-> H
-    J -.-> I
-    
-    K["Source: Medium Guide"] -.-> L["Workload strategy determines<br/>the entire optimization approach"]
-```
-
-**شرح المخطط:** استراتيجية تحسين الاستعلامات تعتمد على طبيعة الحمل (Workload). أنظمة OLAP (قراءة مكثفة) تستفيد من الفهارس المتعددة لتسريع القراءة. أنظمة OLTP (كتابة مكثفة) تحتاج إلى تقليل الفهارس لتجنب كلفة التحديث. الأنظمة المختلطة تحتاج إلى موازنة دقيقة بناءً على تحليل استخدام الفهارس وتكرار الاستعلامات. المصدر: Medium Guide.
-
----
-
-## Diagram 32: Index Suggestion vs Maintenance Decision
-
-```mermaid
-flowchart TD
-    A["Index Analysis"] --> B{"Index exists?"}
-    
-    B -->|"No"| C["INDEX_SUGGESTION"]
-    C --> C1["Large table?"]
-    C1 -->|"Yes"| C2["Suggest CREATE INDEX<br/>on WHERE/JOIN columns"]
-    C1 -->|"No"| C3["Small table - index<br/>may not be needed"]
-    
-    B -->|"Yes"| D{"Index status?"}
-    
-    D -->|"Unused<br/>(usage_count = 0)"| E["INDEX_MAINTENANCE"]
-    E --> E1["RECOMMEND: DROP INDEX"]
-    E1 --> E2["Benefit: Faster writes<br/>Less storage used"]
-    
-    D -->|"Fragmented"| F["INDEX_MAINTENANCE"]
-    F --> F1["RECOMMEND: REBUILD/REORGANIZE"]
-    F1 --> F2["Benefit: 30% read improvement"]
-    
-    D -->|"Healthy"| G{"Optimization<br/>needed?"}
-    
-    G -->|"Need composite"| H["INDEX_SUGGESTION"]
-    H --> H1["Suggest COMPOSITE INDEX"]
-    H1 --> H2["Benefit: Multi-condition queries"]
-    
-    G -->|"Need clustered<br/>for range"| I["INDEX_SUGGESTION"]
-    I --> I1["Convert to CLUSTERED INDEX"]
-    I1 --> I2["Benefit: 50-80% range speedup"]
-    
-    G -->|"No foreign key<br/>index"| J["INDEX_SUGGESTION"]
-    J --> J1["INDEX on FOREIGN KEY"]
-    J1 --> J2["Benefit: 80% JOIN speedup"]
-    
-    G -->|"Adequate"| K["No action needed"]
-    
-    L["Key principle:"] -.-> M["INDEX_SUGGESTION = CREATE new index<br/>INDEX_MAINTENANCE = DROP/REBUILD existing"]
-```
-
-**شرح المخطط:** هذا المخطط يوضح الفرق الواضح بين INDEX_SUGGESTION (اقتراح إنشاء فهارس جديدة) و INDEX_MAINTENANCE (صيانة الفهارس الموجودة). INDEX_SUGGESTION ينشط عندما لا يوجد فهرس مناسب أو عندما نحتاج فهرساً محسنّاً (مركب، مجمع، على مفتاح خارجي). INDEX_MAINTENANCE ينشط فقط عندما يوجد فهرس فعلي لكنه يعاني من مشكلة (غير مستخدم، مجزأ). هذا الفصل الواضح يمنع التعارض في التوصيات ويزيل التشويش من التقرير النهائي.
