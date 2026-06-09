@@ -16,7 +16,8 @@ class QueryOptimizer:
             self.engine.declare(f)
         self.engine.run()
 
-        sorted_recs = sort_by_priority(self.engine.recommendations)
+        unique_recs = self._deduplicate(self.engine.recommendations)
+        sorted_recs = sort_by_priority(unique_recs)
         reasoning_log = [f"[{r['priority']}] {r['category']}: {r['recommendation_text']} => {r['reasoning']}" for r in sorted_recs]
 
         return {
@@ -24,3 +25,14 @@ class QueryOptimizer:
             "reasoning_log": reasoning_log,
             "total_recommendations": len(sorted_recs)
         }
+
+    @staticmethod
+    def _deduplicate(recommendations):
+        seen = set()
+        result = []
+        for rec in recommendations:
+            key = (rec['category'], rec['recommendation_text'], rec['applies_to'])
+            if key not in seen:
+                seen.add(key)
+                result.append(rec)
+        return result

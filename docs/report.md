@@ -71,8 +71,8 @@
 - تم تحليل تقنيات التحسين المختلفة وتصنيفها
 
 ### 5.2 تصميم قاعدة المعرفة
-- تم تصميم 7 فئات من الحقائق (Facts) لتغطية جميع جوانب الاستعلام
-- تم تعريف أكثر من 20 قاعدة تحسين (Rules)
+- تم تصميم نموذج الحقائق الذرية (Atomic Facts) لتغطية جميع جوانب الاستعلام
+- تم تعريف أكثر من 44 قاعدة تحسين (Rules) منها 5 قواعد اشتقاق وسيطة (Derived Facts)
 
 ### 5.3 بناء محرك الاستدلال
 - استخدام مكتبة Experta التي تطبق خوارزمية Rete
@@ -301,17 +301,17 @@
 مثال لقاعدة:
 ```python
 @Rule(
-    QueryFact(predicate_type=MATCH()),
-    IndexFact(has_index=True, index_selectivity_high=MATCH()),
-    TableFact(is_large_table=True)
+    Fact(table=MATCH.t, index=True),
+    Fact(table=MATCH.t, selective=True),
+    Fact(table=MATCH.t, large=True)
 )
-def rule_index_scan(self, query_type, predicate_type):
+def rule_index_scan(self):
     # إنشاء توصية باستخدام Index Scan
 ```
 
 ### 8.3 القواعد المطبقة في النظام
 
-يحتوي النظام على 27 قاعدة تحسين تغطي جميع القرارات الرئيسية:
+يحتوي النظام على أكثر من 44 قاعدة تحسين تغطي جميع القرارات الرئيسية، منها 5 قواعد اشتقاق وسيطة (Derived Facts) و 39 قاعدة توصية مباشرة:
 
 | الرقم | اسم القاعدة | القرار | الأولوية |
 |---|---|---|---|
@@ -345,6 +345,20 @@ def rule_index_scan(self, query_type, predicate_type):
 | 28 | rule_materialize_subquery | تجسيد Subquery | MEDIUM |
 | 29 | rule_not_in_to_not_exists | NOT IN -> NOT EXISTS | HIGH |
 | 30 | rule_clustered_index_for_range | Clustered Index للمدى | MEDIUM |
+| 31 | rule_use_index_for_filter | استخدام الفهرس في WHERE | HIGH |
+| 32 | rule_index_on_foreign_key | فهرس على المفتاح الخارجي | HIGH |
+| 33 | rule_maintain_indexes_read_heavy | صيانة الفهارس للقراءة | MEDIUM |
+| 34 | rule_minimize_indexes_write_heavy | تقليل الفهارس للكتابة | MEDIUM |
+| 35 | rule_create_histogram | إنشاء Histogram | MEDIUM |
+| 36 | rule_order_by_with_limit | ORDER BY مع LIMIT | LOW |
+| 37 | rule_predicate_pushdown_view | دفع الشروط عبر View | HIGH |
+| 38 | rule_semi_join | استخدام Semi-Join | HIGH |
+| 39 | rule_anti_join | استخدام Anti-Join | HIGH |
+| 40 | rule_adaptive_join | استخدام Adaptive Join | MEDIUM |
+| 41 | rule_cte_materialization | تجسيد CTE | MEDIUM |
+| 42 | rule_parallel_execution | تنفيذ متوازي | HIGH |
+| 43 | rule_partition_pruning | قص الأقسام | HIGH |
+| 44 | rule_partition_key_missing | تحذير مفتاح التقسيم | MEDIUM |
 
 ### 8.4 مبدأ عدم استخدام المنطق الإجرائي
 
@@ -386,7 +400,7 @@ def rule_index_scan(self, query_type, predicate_type):
 
 ## 10. المخططات (Diagrams)
 
-يحتوي المشروع على 20 مخططاً تغطي جميع جوانب النظام. المخططات منفصلة ومركزة بحيث يخدم كل مخطط فكرة واحدة أو قراراً واحداً. يمكن الاطلاع على جميع المخططات في ملف `docs/diagrams.md`.
+يحتوي المشروع على 32 مخططاً تغطي جميع جوانب النظام. المخططات منفصلة ومركزة بحيث يخدم كل مخطط فكرة واحدة أو قراراً واحداً. يمكن الاطلاع على جميع المخططات في ملف `docs/diagrams.md`.
 
 ### قائمة المخططات:
 
@@ -412,6 +426,18 @@ def rule_index_scan(self, query_type, predicate_type):
 | 18 | Explain Output Flow | تدفق الإخراج التوضيحي |
 | 19 | Write-Heavy vs Read-Heavy | مقارنة الحمل |
 | 20 | Complete Decision Tree | شجرة القرارات الكاملة |
+| 21 | Semi-Join vs Anti-Join Decision | مقارنة Semi و Anti Join |
+| 22 | Partition Pruning Decision | قرار قص الأقسام |
+| 23 | Parallel Execution Strategy | استراتيجية التنفيذ المتوازي |
+| 24 | CTE Materialization Decision | قرار تجسيد CTE |
+| 25 | Predicate Pushdown Across Views | دفع الشروط عبر View |
+| 26 | Adaptive Join Decision | قرار Adaptive Join |
+| 27 | Deduplication Output Layer | طبقة إزالة التكرار |
+| 28 | Clustered Index for Range Queries | فهرس مجمع للنطاق |
+| 29 | Covering Index Scan | مسح فهرس الغطاء |
+| 30 | LIMIT/OFFSET Pagination Optimization | تحسين التقسيم إلى صفحات |
+| 31 | OR Condition Rewriting with UNION ALL | إعادة كتابة OR |
+| 32 | UNION ALL vs UNION Decision | مقارنة UNION ALL مع UNION |
 
 ---
 
@@ -463,10 +489,11 @@ def rule_index_scan(self, query_type, predicate_type):
 ### 13.1 النتائج المحققة
 
 تم بنجاح بناء نظام خبير لتحسين استعلامات SQL باستخدام:
-- قاعدة معرفة منظمة تغطي 7 فئات من الحقائق
-- 30 قاعدة تحسين تغطي جميع القرارات الرئيسية
+- قاعدة معرفة تعتمد على الحقائق الذرية (Atomic Facts)
+- أكثر من 44 قاعدة تحسين تغطي جميع القرارات الرئيسية
 - محرك استدلال قائم على خوارزمية Rete عبر مكتبة Experta
-- 20 مخططاً تنظيمياً وتفسيرياً
+- 32 مخططاً تنظيمياً وتفسيرياً
+- طبقة إزالة تكرار (Deduplication Layer) في مخرجات النظام
 - 4 أمثلة تشغيل متنوعة
 
 ### 13.2 المزايا

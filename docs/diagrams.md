@@ -877,3 +877,186 @@ flowchart TD
 
 **شرح المخطط:** Adaptive Join هي تقنية حديثة (متوفرة في SQL Server 2017+ و PostgreSQL) تسمح باختيار خوارزمية JOIN في منتصف التنفيذ بناءً على الإحصاءات الفعلية في وقت التشغيل. تبدأ بـ Hash Join، وإذا تبين أن العلاقة الداخلية أصغر من المتوقع، تتحول إلى Nested Loop Join تلقائياً. هذا يوفر أداءً قوياً حتى عندما تكون إحصاءات النظام قديمة أو غير دقيقة.
 المصدر: Modern DBMS (SQL Server 2017+, PostgreSQL).
+
+---
+
+## Diagram 27: Deduplication Output Layer
+
+```mermaid
+flowchart TD
+    A["Engine fires all matching rules"] --> B["Raw Recommendation list<br/>(may contain duplicates)"]
+    
+    B --> C["Deduplication Phase"]
+    
+    C --> D["For each recommendation, compute key:<br/>(category + recommendation_text + applies_to)"]
+    D --> E{"Key already seen?"}
+    E -->|"Yes"| F["Skip duplicate"]
+    E -->|"No"| G["Add to final list"]
+    
+    F --> H["Deduplicated Recommendation List"]
+    G --> H
+    
+    H --> I["Sorted by priority<br/>(HIGH, MEDIUM, LOW)"]
+    I --> J["Final Report"]
+    
+    K["Why duplicates occur:"] -.-> L["Rules fire per matching fact pair<br/>e.g. 2 small tables × 2 indexes = 4 firings"]
+    K -.-> M["Same recommendation text<br/>with different fact bindings"]
+    K -.-> N["Dedup keeps first occurrence only"]
+```
+
+**شرح المخطط:** تمت إضافة طبقة إزالة التكرار في مرحلة تجميع النتائج النهائية بعد إطلاق جميع القواعد. لكل توصية، يتم حساب مفتاح فريد (فئة التوصية + النص + مجال التطبيق). إذا تكرر نفس المفتاح، يتم الاحتفاظ بالتوصية الأولى فقط وتجاهل الباقي. هذا يمنع التكرار دون تغيير قواعد Experta نفسها. تم تطبيق هذا التحسين بناءً على تحليل المخرجات التي أظهرت تكرار بعض التوصيات حتى 4 مرات في الحالات التي تحتوي على عدة جداول وفهارس.
+
+---
+
+## Diagram 28: Clustered Index for Range Queries
+
+```mermaid
+flowchart TD
+    A["Range Query Detected<br/>(BETWEEN, >, <, >=, <=)"] --> B{"Existing index<br/>on column?"}
+    
+    B -->|"Yes"| C{"Index type?"}
+    C -->|"Clustered"| D["✓ Optimal performance"]
+    C -->|"Non-Clustered"| E["⚠ Suboptimal for range"]
+    
+    E --> F["Non-Clustered Index on range:<br/>- Random I/O per matching row<br/>- Key lookup for each row<br/>- May be worse than Full Scan"]
+    F --> G["Suggest converting to<br/>Clustered Index"]
+    
+    B -->|"No"| H{"Table is large?"}
+    H -->|"Yes"| I["Suggest creating<br/>Clustered Index"]
+    H -->|"No"| J["Full Scan is cheaper<br/>for small tables"]
+    
+    G --> K["Clustered Index benefits:"]
+    I --> K
+    
+    K --> L["Physical ordering of data"]
+    K --> M["Sequential I/O for ranges"]
+    K --> N["No key lookup needed"]
+    K --> O["Covers ORDER BY on key"]
+    
+    P["Performance gain:<br/>50-80% for range queries"] -.-> K
+```
+
+**شرح المخطط:** Clustered Index يرتب البيانات فيزيائياً على القرص وفقاً لترتيب مفتاح الفهرس. هذا يجعله مثالياً لاستعلامات النطاق (BETWEEN, >, <) لأن البيانات المتجاوبة ستكون مخزنة بشكل متتالٍ، مما يسمح بقراءة متسلسلة (Sequential I/O) بدلاً من قراءة عشوائية. الفرق في الأداء يمكن أن يصل إلى 80% لاستعلامات النطاق. المصدر: Database System Concepts Ch16.
+
+---
+
+## Diagram 29: Covering Index Scan
+
+```mermaid
+flowchart TD
+    A["Query with SELECT column1, column2"] --> B{"Index contains<br/>all SELECT columns?"}
+    
+    B -->|"Yes"| C["Covering Index possible!"]
+    B -->|"No"| D["Need key lookup to<br/>fetch missing columns"]
+    
+    C --> E["Using Covering Index:"]
+    E --> F["✓ Only index pages read"]
+    E --> G["✓ No base table access"]
+    E --> H["✓ Index is already sorted"]
+    E --> I["✓ Much less I/O"]
+    
+    D --> J["Non-covering access:"]
+    J --> K["✗ Index pages read (narrow)"]
+    J --> L["✗ Key lookup per row"]
+    J --> M["✗ Random I/O for lookups"]
+    J --> N["✗ More I/O + CPU"]
+    
+    O["Comparison:"] -.-> P["Covering Scan = 5-15 I/Os<br/>Non-covering = 1000s of I/Os"]
+    
+    Q["Source: Database System Concepts Ch16.4"] -.-> R["Covering indexes eliminate table access,<br/>providing the fastest read path"]
+```
+
+**شرح المخطط:** Covering Index (فهرس غطاء) هو فهرس يحتوي على جميع الأعمدة المطلوبة في استعلام SELECT، مما يلغي الحاجة إلى الوصول إلى الجدول الأصلي. هذا يوفر وقتاً كبيراً في I/O لأنه يكتفي بقراءة صفحات الفهرس فقط. هو أسرع طريقة لقراءة البيانات لأن BASE TABLE لا يُلمس البتة. المصدر: Database System Concepts Ch16.4.
+
+---
+
+## Diagram 30: LIMIT/OFFSET Pagination Optimization
+
+```mermaid
+flowchart TD
+    A["Query with LIMIT/OFFSET"] --> B{"Has ORDER BY?"}
+    
+    B -->|"No"| C["⚠ Inconsistent results!"]
+    C --> D["Same query may return<br/>different rows each execution"]
+    D --> E["Recommend: Always add ORDER BY<br/>with LIMIT/OFFSET"]
+    
+    B -->|"Yes"| F{"Index supports<br/>ORDER BY?"}
+    
+    F -->|"Yes"| G["Use ordered index scan"]
+    G --> H["Index provides sorted order<br/>without extra sort"]
+    H --> I["Scan skips first OFFSET rows<br/>Stops after LIMIT rows"]
+    I --> J["Highly efficient"]
+    
+    F -->|"No"| K["DB must sort all rows first"]
+    K --> L["Full sort of table"]
+    L --> M["Then apply LIMIT/OFFSET"]
+    M --> N["Potentially expensive for large tables"]
+    
+    O["Performance comparison:"] -.-> P["Index-based: O(log N + LIMIT) I/Os<br/>Full sort: O(N log N) I/Os"]
+    
+    Q["Source: Database System Concepts Ch16"] -.-> R["Index on ORDER BY column is critical<br/>for efficient pagination"]
+```
+
+**شرح المخطط:** تحسين استعلامات LIMIT/OFFSET (التقسيم إلى صفحات) يعتمد بشكل كبير على وجود فهرس يدعم ORDER BY. مع الفهرس المناسب، يمكن للقاعدة تخطي الصفوف بسرعة (OFFSET) وإرجاع العدد المطلوب فقط (LIMIT) دون فرز جميع البيانات. بدون فهرس مناسب، تضطر قاعدة البيانات لفرز الجدول كاملاً. المصدر: Database System Concepts Ch16 و Medium Guide.
+
+---
+
+## Diagram 31: OR Condition Rewriting with UNION ALL
+
+```mermaid
+flowchart TD
+    A["Query with OR condition"] --> B{"Columns in OR<br/>have separate indexes?"}
+    
+    B -->|"Yes"| C["Rewrite as UNION ALL"]
+    B -->|"No"| D{"Single index covers<br/>both columns?"}
+    
+    C --> E["Original: WHERE col1='x' OR col2='y'"]
+    E --> F["Rewrite:"]
+    F --> G["SELECT ... WHERE col1='x'<br/>UNION ALL<br/>SELECT ... WHERE col2='y'"]
+    
+    G --> H["Each part uses its own index"]
+    H --> I["Much more efficient"]
+    
+    D -->|"Yes"| J["Use composite index scan"]
+    D -->|"No"| K["⚠ May result in Full Table Scan"]
+    K --> L["OR often prevents index usage"]
+    L --> M["Consider creating indexes or<br/>rewriting with UNION ALL"]
+    
+    N["Why OR is problematic:"] -.-> O["Index can only seek one range<br/>OR requires scanning both sets"]
+    N -.-> P["UNION ALL allows separate index<br/>seeks per condition"]
+    
+    Q["Source: dbjournal.ro"] -.-> R["OR conditions can degrade performance<br/>by 40-60% without proper optimization"]
+```
+
+**شرح المخطط:** شروط OR تمنع استخدام الفهارس في معظم الحالات لأن محرك قاعدة البيانات لا يستطيع تنفيذ Index Seek واحد لشرط OR (يحتاج إلى مسح ضوئي). الحل هو إعادة كتابة OR باستخدام UNION ALL حيث يمكن لكل جزء استخدام الفهرس الخاص به. هذا يحسن أداء الاستعلامات التي تحتوي على OR بنسبة 40-60%. المصدر: dbjournal.ro.
+
+---
+
+## Diagram 32: UNION ALL vs UNION Decision
+
+```mermaid
+flowchart TD
+    A["Query with UNION"] --> B{"Need deduplication?"}
+    
+    B -->|"Yes"| C["UNION is correct"]
+    B -->|"No"| D["Use UNION ALL instead"]
+    
+    C --> E["UNION process:"]
+    E --> F["Execute both queries"]
+    F --> G["Merge results"]
+    G --> H["Sort to detect duplicates"]
+    H --> I["Remove duplicates"]
+    I --> J["Return unique results"]
+    
+    D --> K["UNION ALL process:"]
+    K --> L["Execute both queries"]
+    L --> M["Append results directly"]
+    M --> N["Return all results"]
+    
+    O["Performance comparison:"] -.-> P["UNION: O(N log N) for sorting<br/>UNION ALL: O(N) direct merge"]
+    O -.-> Q["UNION ALL is always faster<br/>when dedup not needed"]
+    
+    R["Source: Database System Concepts Ch16"] -.-> S["UNION adds sort for dedup,<br/>UNION ALL concatenates directly"]
+```
+
+**شرح المخطط:** UNION يقوم بإزالة التكرارات (Deduplication) بينما UNION ALL لا يفعل ذلك. عملية إزالة التكرار تتطلب فرز النتائج (Sort) مما يزيد من كلفة الاستعلام. إذا كنت متأكداً من عدم وجود تكرارات أو لا تمانع وجودها، استخدم UNION ALL للحصول على أداء أفضل. المصدر: Database System Concepts Ch16.

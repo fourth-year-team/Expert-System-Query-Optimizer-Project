@@ -64,7 +64,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="access_path"
         ))
 
-    @Rule(Fact(table=MATCH.t, small=True) & Fact(table=MATCH.t, index=True))
+    @Rule(Fact(table=MATCH.t, small=True))
     def rule_small_table_scan(self):
         self.record(RecommendationFact(
             recommendation_id=next_id(),
@@ -102,7 +102,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="query_tree_transformation"
         ))
 
-    @Rule(Fact(select_star=True))
+    @Rule(Fact(select_list_wide=True))
     def rule_push_projection_down(self):
         self.record(RecommendationFact(
             recommendation_id=next_id(),
