@@ -632,3 +632,401 @@ flowchart TB
 ```
 
 **شرح المخطط:** هذا هو المخطط الشامل الذي يلخص جميع قرارات النظام الخبير من البداية إلى النهاية. يبدأ بتصنيف الاستعلام، ثم تحليل الجداول والفهارس و JOINs، ثم تطبيق سلسلة من قواعد التحسين، وينتهي بتقرير تحسيني شامل مع تبرير لكل قرار.
+
+---
+
+## Diagram 21: Deduplication Output Layer
+
+```mermaid
+flowchart TD
+    A["Engine fires all matching rules"] --> B["Raw Recommendation list<br/>(may contain duplicates)"]
+    
+    B --> C["Deduplication Phase"]
+    
+    C --> D["For each recommendation, compute key:<br/>(category + recommendation_text + applies_to)"]
+    D --> E{"Key already seen?"}
+    E -->|"Yes"| F["Skip duplicate"]
+    E -->|"No"| G["Add to final list"]
+    
+    F --> H["Deduplicated Recommendation List"]
+    G --> H
+    
+    H --> I["Sorted by priority<br/>(HIGH, MEDIUM, LOW)"]
+    I --> J["Final Report"]
+    
+    K["Why duplicates occur:"] -.-> L["Rules fire per matching fact pair<br/>e.g. 2 small tables × 2 indexes = 4 firings"]
+    K -.-> M["Same recommendation text<br/>with different fact bindings"]
+    K -.-> N["Dedup keeps first occurrence only"]
+```
+
+**شرح المخطط:** تمت إضافة طبقة إزالة التكرار في مرحلة تجميع النتائج النهائية بعد إطلاق جميع القواعد. لكل توصية، يتم حساب مفتاح فريد (فئة التوصية + النص + مجال التطبيق). إذا تكرر نفس المفتاح، يتم الاحتفاظ بالتوصية الأولى فقط وتجاهل الباقي. هذا يمنع التكرار دون تغيير قواعد Experta نفسها. تم تطبيق هذا التحسين بناءً على تحليل المخرجات التي أظهرت تكرار بعض التوصيات حتى 4 مرات في الحالات التي تحتوي على عدة جداول وفهارس.
+
+---
+
+## Diagram 22: NOT IN to NOT EXISTS Transformation
+
+```mermaid
+flowchart TD
+    A["Query with NOT IN subquery"] --> B{"Subquery result<br/>contains NULL?"}
+    
+    B -->|"Yes/Unknown"| C["NOT IN returns EMPTY result<br/>(NULL semantics break it)"]
+    C --> D["⚠ Correctness issue!"]
+    D --> E["Rewrite as NOT EXISTS"]
+    
+    B -->|"No NULLs"| F["NOT IN works correctly<br/>but may be slow"]
+    F --> G["NOT IN scans ALL values<br/>in subquery result"]
+    G --> H["Rewrite as NOT EXISTS<br/>for better performance"]
+    
+    E --> I["NOT EXISTS benefits:"]
+    H --> I
+    
+    I --> J["Early termination<br/>(stops at first match)"]
+    I --> K["Correct NULL handling"]
+    I --> L["Semi-join optimization"]
+    I --> M["Better index usage"]
+    
+    N["Source: Database System Concepts Ch16"] -.-> O["NOT EXISTS is always preferred<br/>over NOT IN for subqueries"]
+```
+
+**شرح المخطط:** NOT IN يعاني من مشكلة معروفة: إذا كانت نتيجة Subquery تحتوي على NULL، فإن NOT IN يرجع مجموعة فارغة (لأن NULL = ANY (subquery) يُقيّم إلى UNKNOWN). NOT EXISTS يتعامل مع NULL بشكل صحيح ويوفر أداء أفضل بفضل التوقف عند أول تطابق (Early Termination). المصدر: Database System Concepts Ch16 و dbjournal.ro.
+
+---
+
+## Diagram 23: Clustered Index for Range Queries
+
+```mermaid
+flowchart TD
+    A["Range Query Detected<br/>(BETWEEN, >, <, >=, <=)"] --> B{"Existing index<br/>on column?"}
+    
+    B -->|"Yes"| C{"Index type?"}
+    C -->|"Clustered"| D["✓ Optimal performance"]
+    C -->|"Non-Clustered"| E["⚠ Suboptimal for range"]
+    
+    E --> F["Non-Clustered Index on range:<br/>- Random I/O per matching row<br/>- Key lookup for each row<br/>- May be worse than Full Scan"]
+    F --> G["Suggest converting to<br/>Clustered Index"]
+    
+    B -->|"No"| H{"Table is large?"}
+    H -->|"Yes"| I["Suggest creating<br/>Clustered Index"]
+    H -->|"No"| J["Full Scan is cheaper<br/>for small tables"]
+    
+    G --> K["Clustered Index benefits:"]
+    I --> K
+    
+    K --> L["Physical ordering of data"]
+    K --> M["Sequential I/O for ranges"]
+    K --> N["No key lookup needed"]
+    K --> O["Covers ORDER BY on key"]
+    
+    P["Performance gain:<br/>50-80% for range queries"] -.-> K
+```
+
+**شرح المخطط:** Clustered Index يرتب البيانات فيزيائياً على القرص وفقاً لترتيب مفتاح الفهرس. هذا يجعله مثالياً لاستعلامات النطاق (BETWEEN, >, <) لأن البيانات المتجاوبة ستكون مخزنة بشكل متتالٍ، مما يسمح بقراءة متسلسلة (Sequential I/O) بدلاً من قراءة عشوائية. الفرق في الأداء يمكن أن يصل إلى 80% لاستعلامات النطاق. المصدر: Database System Concepts Ch16.
+
+---
+
+## Diagram 24: Composite Index Decision
+
+```mermaid
+flowchart TD
+    A["Multiple WHERE conditions detected"] --> B{"Which columns are<br/>most selective?"}
+    
+    B --> C["Order columns by selectivity<br/>(most selective first)"]
+    C --> D["Candidate index:<br/>(col1, col2, col3)"]
+    
+    D --> E{"Column order<br/>in queries?"}
+    E -->|"col1, col2 always together"| F["Good: Single composite index"]
+    E -->|"col1 alone, col2 alone"| G["Consider separate indexes"]
+    E -->|"col2 without col1"| H["⚠ col2 won't use composite<br/>if col1 is leading column"]
+    
+    F --> I["Composite index benefits:"]
+    G --> I
+    
+    I --> J["Index covering more queries"]
+    I --> K["Reduced index maintenance"]
+    I --> L["Better than multiple single indexes"]
+    
+    M["Rules of thumb:"] -.-> N["Leading column should be<br/>most selective or most used"]
+    M -.-> O["Max 3-5 columns per composite"]
+    M -.-> P["Consider all queries, not just one"]
+    
+    Q["Source: Database System Concepts Ch16"] -.-> R["Composite index design is critical<br/>for multi-condition queries"]
+```
+
+**شرح المخطط:** الفهرس المركب (Composite Index) هو فهرس على عدة أعمدة معاً. ترتيب الأعمدة في الفهرس المركب مهم جداً: يجب وضع العمود الأكثر انتقائية أولاً. كما أن الفهرس المركب لا يمكن استخدامه إذا لم يكن العمود الأول (Leading Column) موجوداً في الشرط. المصدر: Database System Concepts Ch16 و dbjournal.ro.
+
+---
+
+## Diagram 25: Covering Index Scan
+
+```mermaid
+flowchart TD
+    A["Query with SELECT column1, column2"] --> B{"Index contains<br/>all SELECT columns?"}
+    
+    B -->|"Yes"| C["Covering Index possible!"]
+    B -->|"No"| D["Need key lookup to<br/>fetch missing columns"]
+    
+    C --> E["Using Covering Index:"]
+    E --> F["✓ Only index pages read"]
+    E --> G["✓ No base table access"]
+    E --> H["✓ Index is already sorted"]
+    E --> I["✓ Much less I/O"]
+    
+    D --> J["Non-covering access:"]
+    J --> K["✗ Index pages read (narrow)"]
+    J --> L["✗ Key lookup per row"]
+    J --> M["✗ Random I/O for lookups"]
+    J --> N["✗ More I/O + CPU"]
+    
+    O["Comparison:"] -.-> P["Covering Scan = 5-15 I/Os<br/>Non-covering = 1000s of I/Os"]
+    
+    Q["Source: Database System Concepts Ch16.4"] -.-> R["Covering indexes eliminate table access,<br/>providing the fastest read path"]
+```
+
+**شرح المخطط:** Covering Index (فهرس غطاء) هو فهرس يحتوي على جميع الأعمدة المطلوبة في استعلام SELECT، مما يلغي الحاجة إلى الوصول إلى الجدول الأصلي. هذا يوفر وقتاً كبيراً في I/O لأنه يكتفي بقراءة صفحات الفهرس فقط. هو أسرع طريقة لقراءة البيانات لأن BASE TABLE لا يُلمس البتة. المصدر: Database System Concepts Ch16.4.
+
+---
+
+## Diagram 26: Materialized Subquery Optimization
+
+```mermaid
+flowchart TD
+    A["Correlated Subquery detected"] --> B{"Allows temp table?"}
+    
+    B -->|"Yes"| C{"Has aggregation<br/>in subquery?"}
+    B -->|"No"| D["Cannot materialize"]
+    
+    C -->|"Yes"| E["Good candidate<br/>for materialization"]
+    C -->|"No"| F["Consider JOIN rewrite first"]
+    
+    E --> G["Materialization process:"]
+    G --> H["1. Execute subquery once"]
+    G --> I["2. Store result in temp table"]
+    G --> J["3. Add index on join column"]
+    G --> K["4. Join outer query with temp table"]
+    
+    H --> L["Before: N+1 executions"]
+    I --> L
+    K --> L
+    
+    L --> M["After: 1 execution + efficient join"]
+    
+    N["Performance impact:"] -.-> O["For N=1000 outer rows<br/>Before: 1000 subquery executions<br/>After: 1 subquery + 1 indexed join"]
+    
+    P["Source: Database System Concepts Ch16"] -.-> Q["Materialization converts correlated<br/>subquery into efficient join"]
+```
+
+**شرح المخطط:** تجسيد Subquery (Materialization) هو أسلوب تحسيني للـ Subqueries الترابطية (Correlated Subqueries). بدلاً من تنفيذ Subquery لكل صف من الاستعلام الخارجي (N+1 مرة)، يتم تنفيذ Subquery مرة واحدة وتخزين النتيجة في جدول مؤقت مع فهرس على عمود JOIN. هذا يحول المشكلة من N+1 تنفيذ إلى تنفيذ واحد + JOIN فعال. المصدر: Database System Concepts Ch16.
+
+---
+
+## Diagram 27: LIMIT/OFFSET Pagination Optimization
+
+```mermaid
+flowchart TD
+    A["Query with LIMIT/OFFSET"] --> B{"Has ORDER BY?"}
+    
+    B -->|"No"| C["⚠ Inconsistent results!"]
+    C --> D["Same query may return<br/>different rows each execution"]
+    D --> E["Recommend: Always add ORDER BY<br/>with LIMIT/OFFSET"]
+    
+    B -->|"Yes"| F{"Index supports<br/>ORDER BY?"}
+    
+    F -->|"Yes"| G["Use ordered index scan"]
+    G --> H["Index provides sorted order<br/>without extra sort"]
+    H --> I["Scan skips first OFFSET rows<br/>Stops after LIMIT rows"]
+    I --> J["Highly efficient"]
+    
+    F -->|"No"| K["DB must sort all rows first"]
+    K --> L["Full sort of table"]
+    L --> M["Then apply LIMIT/OFFSET"]
+    M --> N["Potentially expensive for large tables"]
+    
+    O["Performance comparison:"] -.-> P["Index-based: O(log N + LIMIT) I/Os<br/>Full sort: O(N log N) I/Os"]
+    
+    Q["Source: Database System Concepts Ch16"] -.-> R["Index on ORDER BY column is critical<br/>for efficient pagination"]
+```
+
+**شرح المخطط:** تحسين استعلامات LIMIT/OFFSET (التقسيم إلى صفحات) يعتمد بشكل كبير على وجود فهرس يدعم ORDER BY. مع الفهرس المناسب، يمكن للقاعدة تخطي الصفوف بسرعة (OFFSET) وإرجاع العدد المطلوب فقط (LIMIT) دون فرز جميع البيانات. بدون فهرس مناسب، تضطر قاعدة البيانات لفرز الجدول كاملاً. المصدر: Database System Concepts Ch16 و Medium Guide.
+
+---
+
+## Diagram 28: OR Condition Rewriting with UNION ALL
+
+```mermaid
+flowchart TD
+    A["Query with OR condition"] --> B{"Columns in OR<br/>have separate indexes?"}
+    
+    B -->|"Yes"| C["Rewrite as UNION ALL"]
+    B -->|"No"| D{"Single index covers<br/>both columns?"}
+    
+    C --> E["Original: WHERE col1='x' OR col2='y'"]
+    E --> F["Rewrite:"]
+    F --> G["SELECT ... WHERE col1='x'<br/>UNION ALL<br/>SELECT ... WHERE col2='y'"]
+    
+    G --> H["Each part uses its own index"]
+    H --> I["Much more efficient"]
+    
+    D -->|"Yes"| J["Use composite index scan"]
+    D -->|"No"| K["⚠ May result in Full Table Scan"]
+    K --> L["OR often prevents index usage"]
+    L --> M["Consider creating indexes or<br/>rewriting with UNION ALL"]
+    
+    N["Why OR is problematic:"] -.-> O["Index can only seek one range<br/>OR requires scanning both sets"]
+    N -.-> P["UNION ALL allows separate index<br/>seeks per condition"]
+    
+    Q["Source: dbjournal.ro"] -.-> R["OR conditions can degrade performance<br/>by 40-60% without proper optimization"]
+```
+
+**شرح المخطط:** شروط OR تمنع استخدام الفهارس في معظم الحالات لأن محرك قاعدة البيانات لا يستطيع تنفيذ Index Seek واحد لشرط OR (يحتاج إلى مسح ضوئي). الحل هو إعادة كتابة OR باستخدام UNION ALL حيث يمكن لكل جزء استخدام الفهرس الخاص به. هذا يحسن أداء الاستعلامات التي تحتوي على OR بنسبة 40-60%. المصدر: dbjournal.ro.
+
+---
+
+## Diagram 29: UNION ALL vs UNION Decision
+
+```mermaid
+flowchart TD
+    A["Query with UNION"] --> B{"Need deduplication?"}
+    
+    B -->|"Yes"| C["UNION is correct"]
+    B -->|"No"| D["Use UNION ALL instead"]
+    
+    C --> E["UNION process:"]
+    E --> F["Execute both queries"]
+    F --> G["Merge results"]
+    G --> H["Sort to detect duplicates"]
+    H --> I["Remove duplicates"]
+    I --> J["Return unique results"]
+    
+    D --> K["UNION ALL process:"]
+    K --> L["Execute both queries"]
+    L --> M["Append results directly"]
+    M --> N["Return all results"]
+    
+    O["Performance comparison:"] -.-> P["UNION: O(N log N) for sorting<br/>UNION ALL: O(N) direct merge"]
+    O -.-> Q["UNION ALL is always faster<br/>when dedup not needed"]
+    
+    R["Source: Database System Concepts Ch16"] -.-> S["UNION adds sort for dedup,<br/>UNION ALL concatenates directly"]
+```
+
+**شرح المخطط:** UNION يقوم بإزالة التكرارات (Deduplication) بينما UNION ALL لا يفعل ذلك. عملية إزالة التكرار تتطلب فرز النتائج (Sort) مما يزيد من كلفة الاستعلام. إذا كنت متأكداً من عدم وجود تكرارات أو لا تمانع وجودها، استخدم UNION ALL للحصول على أداء أفضل. المصدر: Database System Concepts Ch16.
+
+---
+
+## Diagram 30: Data Distribution and Histogram Statistics
+
+```mermaid
+flowchart TD
+    A["Query with WHERE condition"] --> B{"Data distribution<br/>known?"}
+    
+    B -->|"Yes"| C{"Histogram<br/>available?"}
+    B -->|"No"| D["⚠ Need data sampling"]
+    D --> E["Collect data distribution stats"]
+    E --> F["Create histogram"]
+    
+    C -->|"Yes"| G["Quality cardinality estimation"]
+    C -->|"No"| H["Using basic statistics<br/>(min, max, avg)"]
+    
+    H --> I["Basic assumption: uniform distribution"]
+    I --> J["Often inaccurate for real data"]
+    J --> K["Example: 'status = ERROR'<br/>with 1% rows → actual 0.01%"]
+    K --> L["Cost estimation error: 100x!"]
+    
+    G --> M["Histogram provides:"]
+    M --> N["Frequency distribution per bucket"]
+    M --> O["Accurate selectivity for each value"]
+    M --> P["Better join cardinality estimates"]
+    M --> Q["More reliable cost-based decisions"]
+    
+    R["Impact:"] -.-> S["Without histogram: 50-100% cost error<br/>With histogram: <10% cost error"]
+    
+    T["Source: Database System Concepts Ch16.4"] -.-> U["Histograms are essential for accurate<br/>cardinality estimation in real-world data"]
+```
+
+**شرح المخطط:** الـ Histogram (الرسم البياني للتوزيع) هو أداة إحصائية مهمة لتقدير انتقائية الشروط في الاستعلامات. بدون Histogram، يفترض محرك قاعدة البيانات توزيعاً منتظماً للبيانات (Uniform Distribution) وهو افتراض غير دقيق في معظم الحالات الواقعية. مع Histogram، يمكن تقدير عدد الصفوف المطابقة لشرط معين بدقة أكبر، مما يؤدي إلى خطط تنفيذ أفضل. المصدر: Database System Concepts Ch16.4 و Medium Guide.
+
+---
+
+## Diagram 31: Workload Strategy Decision
+
+```mermaid
+flowchart TD
+    A["Workload Type Analysis"] --> B{"Query execution<br/>frequency?"}
+    
+    B -->|"HIGH<br/>(Hot queries)"| C["Prioritize optimization<br/>for this query"]
+    B -->|"MEDIUM"| D["Standard optimization"]
+    B -->|"LOW"| E["Minimal optimization<br/>(batch OK)"]
+    
+    C --> F{"Workload<br/>balance?"}
+    D --> F
+    E --> F
+    
+    F -->|"Read-Heavy<br/>(OLAP/Reporting)"| G["Strategy: Maximize read speed"]
+    G --> G1["✓ Create multiple indexes"]
+    G --> G2["✓ Use covering indexes"]
+    G --> G3["✓ Consider materialized views"]
+    G --> G4["✓ Denormalize if needed"]
+    
+    F -->|"Write-Heavy<br/>(OLTP)"| H["Strategy: Minimize write overhead"]
+    H --> H1["✓ Minimize indexes per table"]
+    H --> H2["✓ Drop unused indexes"]
+    H --> H3["✓ Use narrow indexes"]
+    H --> H4["✓ Avoid covering indexes"]
+    
+    F -->|"Mixed"| I["Strategy: Balance"]
+    I --> I1["✓ Index selective columns only"]
+    I --> I2["✓ Monitor index usage regularly"]
+    I --> I3["✓ Consider filtered indexes"]
+    I --> I4["✓ Partition large tables"]
+    
+    J["Response time critical?"] -.-> G
+    J -.-> H
+    J -.-> I
+    
+    K["Source: Medium Guide"] -.-> L["Workload strategy determines<br/>the entire optimization approach"]
+```
+
+**شرح المخطط:** استراتيجية تحسين الاستعلامات تعتمد على طبيعة الحمل (Workload). أنظمة OLAP (قراءة مكثفة) تستفيد من الفهارس المتعددة لتسريع القراءة. أنظمة OLTP (كتابة مكثفة) تحتاج إلى تقليل الفهارس لتجنب كلفة التحديث. الأنظمة المختلطة تحتاج إلى موازنة دقيقة بناءً على تحليل استخدام الفهارس وتكرار الاستعلامات. المصدر: Medium Guide.
+
+---
+
+## Diagram 32: Index Suggestion vs Maintenance Decision
+
+```mermaid
+flowchart TD
+    A["Index Analysis"] --> B{"Index exists?"}
+    
+    B -->|"No"| C["INDEX_SUGGESTION"]
+    C --> C1["Large table?"]
+    C1 -->|"Yes"| C2["Suggest CREATE INDEX<br/>on WHERE/JOIN columns"]
+    C1 -->|"No"| C3["Small table - index<br/>may not be needed"]
+    
+    B -->|"Yes"| D{"Index status?"}
+    
+    D -->|"Unused<br/>(usage_count = 0)"| E["INDEX_MAINTENANCE"]
+    E --> E1["RECOMMEND: DROP INDEX"]
+    E1 --> E2["Benefit: Faster writes<br/>Less storage used"]
+    
+    D -->|"Fragmented"| F["INDEX_MAINTENANCE"]
+    F --> F1["RECOMMEND: REBUILD/REORGANIZE"]
+    F1 --> F2["Benefit: 30% read improvement"]
+    
+    D -->|"Healthy"| G{"Optimization<br/>needed?"}
+    
+    G -->|"Need composite"| H["INDEX_SUGGESTION"]
+    H --> H1["Suggest COMPOSITE INDEX"]
+    H1 --> H2["Benefit: Multi-condition queries"]
+    
+    G -->|"Need clustered<br/>for range"| I["INDEX_SUGGESTION"]
+    I --> I1["Convert to CLUSTERED INDEX"]
+    I1 --> I2["Benefit: 50-80% range speedup"]
+    
+    G -->|"No foreign key<br/>index"| J["INDEX_SUGGESTION"]
+    J --> J1["INDEX on FOREIGN KEY"]
+    J1 --> J2["Benefit: 80% JOIN speedup"]
+    
+    G -->|"Adequate"| K["No action needed"]
+    
+    L["Key principle:"] -.-> M["INDEX_SUGGESTION = CREATE new index<br/>INDEX_MAINTENANCE = DROP/REBUILD existing"]
+```
+
+**شرح المخطط:** هذا المخطط يوضح الفرق الواضح بين INDEX_SUGGESTION (اقتراح إنشاء فهارس جديدة) و INDEX_MAINTENANCE (صيانة الفهارس الموجودة). INDEX_SUGGESTION ينشط عندما لا يوجد فهرس مناسب أو عندما نحتاج فهرساً محسنّاً (مركب، مجمع، على مفتاح خارجي). INDEX_MAINTENANCE ينشط فقط عندما يوجد فهرس فعلي لكنه يعاني من مشكلة (غير مستخدم، مجزأ). هذا الفصل الواضح يمنع التعارض في التوصيات ويزيل التشويش من التقرير النهائي.

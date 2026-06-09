@@ -32,11 +32,24 @@ class QueryOptimizer:
 
         self.engine.run()
 
+        unique_recs = self._deduplicate(self.engine.recommendations)
+
         return {
-            "recommendations": self.engine.recommendations,
+            "recommendations": unique_recs,
             "reasoning_log": self.engine.reasoning_log,
-            "total_recommendations": len(self.engine.recommendations)
+            "total_recommendations": len(unique_recs)
         }
+
+    @staticmethod
+    def _deduplicate(recommendations):
+        seen = set()
+        result = []
+        for rec in recommendations:
+            key = (rec['category'], rec['recommendation_text'], rec['applies_to'])
+            if key not in seen:
+                seen.add(key)
+                result.append(rec)
+        return result
 
     def _fact_summary(self, name: str, fact) -> str:
         if fact is None:

@@ -17,15 +17,16 @@ class QueryOptimizerRules(KnowledgeEngine):
         self.reasoning_log.append(f"[{rec['priority']}] {rec['category']}: {rec['recommendation_text']} => {rec['reasoning']}")
 
     @Rule(
-        TableFact(is_large_table=True),
-        IndexFact(has_index=False),
-        NOT(IndexFact(has_index=True))
+        TableFact(is_large_table=True, relation_name=MATCH.rel),
+        IndexFact(has_index=False, relation_name=MATCH.rel),
+        NOT(IndexFact(has_index=True, relation_name=MATCH.rel)),
+        NOT(TableFact(is_small_table=True, relation_name=MATCH.rel))
     )
-    def rule_full_scan(self):
+    def rule_full_scan(self, rel):
         self.record(RecommendationFact(
             recommendation_id=next_id(),
             category="SCAN_SELECTION",
-            recommendation_text="Use Full Table Scan - table is large with no suitable index",
+            recommendation_text=f"Use Full Table Scan on '{rel}' - table is large with no suitable index",
             reasoning="Source: Database System Concepts Ch16 - Full Scan is the only option when no index exists",
             priority="HIGH",
             expected_improvement="Avoid using non-existent index",
@@ -33,14 +34,15 @@ class QueryOptimizerRules(KnowledgeEngine):
         ))
 
     @Rule(
-        IndexFact(has_index=True, index_selectivity_high=True),
-        TableFact(is_large_table=True)
+        IndexFact(has_index=True, index_selectivity_high=True, relation_name=MATCH.rel),
+        TableFact(is_large_table=True, relation_name=MATCH.rel),
+        NOT(TableFact(is_small_table=True, relation_name=MATCH.rel))
     )
-    def rule_index_scan(self):
+    def rule_index_scan(self, rel):
         self.record(RecommendationFact(
             recommendation_id=next_id(),
             category="SCAN_SELECTION",
-            recommendation_text="Use Index Scan instead of Full Scan for better performance",
+            recommendation_text=f"Use Index Scan on '{rel}' instead of Full Scan for better performance",
             reasoning="Source: dbjournal.ro - Index Scan significantly reduces blocks read when selectivity is high",
             priority="HIGH",
             expected_improvement="Reduce I/O by up to 90%",
@@ -129,9 +131,11 @@ class QueryOptimizerRules(KnowledgeEngine):
 
     @Rule(
         JoinFact(join_ordering_possible=True),
-        TableFact(is_small_table=True)
+        QueryFact(number_of_tables=MATCH.n)
     )
-    def rule_join_order_optimization(self):
+    def rule_join_order_optimization(self, n):
+        if n < 3:
+            return
         self.record(RecommendationFact(
             recommendation_id=next_id(),
             category="JOIN_ORDER",
@@ -355,15 +359,15 @@ class QueryOptimizerRules(KnowledgeEngine):
         ))
 
     @Rule(
-        TableFact(is_small_table=True),
-        IndexFact(has_index=True)
+        TableFact(is_small_table=True, relation_name=MATCH.rel),
+        NOT(TableFact(is_large_table=True, relation_name=MATCH.rel))
     )
-    def rule_small_table_scan(self):
+    def rule_small_table_scan(self, rel):
         self.record(RecommendationFact(
             recommendation_id=next_id(),
             category="SCAN_SELECTION",
-            recommendation_text="Table is small - use Full Table Scan even if an index exists",
-            reasoning="Source: Database System Concepts Ch16 - Index ACCESS + table read cost may exceed Full Scan for small tables",
+            recommendation_text=f"'{rel}' is small - use Full Table Scan instead of Index Scan",
+            reasoning="Source: Database System Concepts Ch16 - Index access + table read cost exceeds Full Scan for small tables; Full Scan is cheaper",
             priority="MEDIUM",
             expected_improvement="Avoid unnecessary index overhead for small tables",
             applies_to="access_path"
@@ -506,8 +510,7 @@ class QueryOptimizerRules(KnowledgeEngine):
         ))
 
     @Rule(
-        WorkloadFact(read_heavy_workload=True, write_heavy_workload=False),
-        IndexFact(has_index=True, index_unused=False, index_fragmented=False)
+        WorkloadFact(read_heavy_workload=True, write_heavy_workload=False)
     )
     def rule_maintain_indexes_read_heavy(self):
         self.record(RecommendationFact(

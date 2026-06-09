@@ -72,7 +72,7 @@
 
 ### 5.2 تصميم قاعدة المعرفة
 - تم تصميم 7 فئات من الحقائق (Facts) لتغطية جميع جوانب الاستعلام
-- تم تعريف أكثر من 20 قاعدة تحسين (Rules)
+- تم تعريف أكثر من 27 قاعدة تحسين (Rules)
 
 ### 5.3 بناء محرك الاستدلال
 - استخدام مكتبة Experta التي تطبق خوارزمية Rete
@@ -386,12 +386,12 @@ def rule_index_scan(self, query_type, predicate_type):
 
 ## 10. المخططات (Diagrams)
 
-يحتوي المشروع على 20 مخططاً تغطي جميع جوانب النظام. المخططات منفصلة ومركزة بحيث يخدم كل مخطط فكرة واحدة أو قراراً واحداً. يمكن الاطلاع على جميع المخططات في ملف `docs/diagrams.md`.
+يحتوي المشروع على 32 مخططاً تغطي جميع جوانب النظام. المخططات منفصلة ومركزة بحيث يخدم كل مخطط فكرة واحدة أو قراراً واحداً. يمكن الاطلاع على جميع المخططات في ملف `docs/diagrams.md`.
 
 ### قائمة المخططات:
 
 | الرقم | اسم المخطط | الوصف |
-|---|---|---|
+|---|---|---|---|
 | 1 | General System Architecture | البنية العامة للنظام |
 | 2 | Query Classification | تصنيف الاستعلام |
 | 3 | Full Scan vs Index Scan | قرار مسار الوصول |
@@ -412,6 +412,18 @@ def rule_index_scan(self, query_type, predicate_type):
 | 18 | Explain Output Flow | تدفق الإخراج التوضيحي |
 | 19 | Write-Heavy vs Read-Heavy | مقارنة الحمل |
 | 20 | Complete Decision Tree | شجرة القرارات الكاملة |
+| 21 | Deduplication Output Layer | طبقة إزالة التكرار |
+| 22 | NOT IN to NOT EXISTS | تحويل NOT IN إلى NOT EXISTS |
+| 23 | Clustered Index for Range | فهرس مجمع للنطاق |
+| 24 | Composite Index Decision | قرار الفهرس المركب |
+| 25 | Covering Index Scan | مسح فهرس الغطاء |
+| 26 | Materialized Subquery | تجسيد Subquery |
+| 27 | LIMIT/OFFSET Pagination | تحسين التقسيم إلى صفحات |
+| 28 | OR Condition Rewriting | إعادة كتابة OR |
+| 29 | UNION ALL vs UNION | مقارنة UNION ALL مع UNION |
+| 30 | Data Distribution & Histogram | توزيع البيانات والـ Histogram |
+| 31 | Workload Strategy Decision | استراتيجية الحمل |
+| 32 | Index Suggestion vs Maintenance | الفهرسة مقابل الصيانة |
 
 ---
 
@@ -464,9 +476,10 @@ def rule_index_scan(self, query_type, predicate_type):
 
 تم بنجاح بناء نظام خبير لتحسين استعلامات SQL باستخدام:
 - قاعدة معرفة منظمة تغطي 7 فئات من الحقائق
-- 30 قاعدة تحسين تغطي جميع القرارات الرئيسية
+- 27 قاعدة تحسين تغطي جميع القرارات الرئيسية
 - محرك استدلال قائم على خوارزمية Rete عبر مكتبة Experta
-- 20 مخططاً تنظيمياً وتفسيرياً
+- 32 مخططاً تنظيمياً وتفسيرياً
+- طبقة إزالة تكرار (Deduplication Layer) في مخرجات النظام
 - 4 أمثلة تشغيل متنوعة
 
 ### 13.2 المزايا
