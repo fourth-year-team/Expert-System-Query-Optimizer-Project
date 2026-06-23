@@ -16,7 +16,170 @@ class QueryOptimizerRules(KnowledgeEngine):
         self.recommendations.append(rec)
         self.reasoning_log.append(f"[{rec['priority']}] {rec['category']}: {rec['recommendation_text']} => {rec['reasoning']}")
 
-    # ── Derived intermediate facts (chaining) ──
+    # ── New Rules ──
+
+    # FILTER_INDEX_OPTIMIZATION
+    @Rule(Fact(index_filter=False) & NOT(Fact(write_heavy=True)))
+    def rule_filter_index_opt(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="FILTER_INDEX_OPTIMIZATION",
+            recommendation_text="Create indexes on frequently filtered columns.",
+            reasoning="Queries filtering on non-indexed columns may require expensive full table scans.",
+            priority="HIGH",
+            expected_improvement="Improve filter performance",
+            applies_to="index_optimization"
+        ))
+
+    @Rule(Fact(table=MATCH.t, large=True) & Fact(index_filter=False) & NOT(Fact(write_heavy=True)))
+    def rule_filter_index_large_opt(self, t):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="FILTER_INDEX_OPTIMIZATION",
+            recommendation_text="Create indexes on filtering columns immediately because large-table scans are expensive.",
+            reasoning="Large tables require indexes for efficient filtering.",
+            priority="HIGH",
+            expected_improvement="Prevent full table scans on large tables",
+            applies_to="index_optimization"
+        ))
+
+    @Rule(Fact(index_filter=False) & Fact(write_heavy=True))
+    def rule_filter_index_write_heavy(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="WORKLOAD_STRATEGY",
+            recommendation_text="Evaluate index tradeoffs: write-heavy workloads benefit from fewer indexes, but critical filter columns may still need indexing.",
+            reasoning="Source: dbjournal.ro - Each additional index increases write cost, but missing indexes on filtered columns cause full scans.",
+            priority="MEDIUM",
+            expected_improvement="Balance write performance with query performance",
+            applies_to="index_strategy"
+        ))
+
+    # GROUP_BY_OPTIMIZATION
+    @Rule(Fact(aggregation=True))
+    def rule_groupby_opt(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="GROUP_BY_OPTIMIZATION",
+            recommendation_text="Review GROUP BY columns and consider indexing them.",
+            reasoning="Indexes may reduce sorting and grouping costs.",
+            priority="MEDIUM",
+            expected_improvement="Improve grouping performance",
+            applies_to="aggregation_optimization"
+        ))
+
+    @Rule(Fact(aggregation=True) & Fact(table=MATCH.t, large=True))
+    def rule_groupby_large_opt(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="GROUP_BY_OPTIMIZATION",
+            recommendation_text="Consider summary tables or pre-aggregation strategies.",
+            reasoning="Large table aggregation is expensive; pre-aggregation can speed up queries.",
+            priority="MEDIUM",
+            expected_improvement="Improve large-scale aggregation performance",
+            applies_to="aggregation_optimization"
+        ))
+
+    # DISTINCT_OPTIMIZATION
+    @Rule(Fact(distinct=True))
+    def rule_distinct_opt(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="DISTINCT_OPTIMIZATION",
+            recommendation_text="Verify that DISTINCT is actually required.",
+            reasoning="DISTINCT may introduce sorting or hashing overhead.",
+            priority="LOW",
+            expected_improvement="Reduce unnecessary processing",
+            applies_to="distinct_optimization"
+        ))
+
+    @Rule(Fact(distinct=True) & Fact(table=MATCH.t, large=True))
+    def rule_distinct_large_opt(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="DISTINCT_OPTIMIZATION",
+            recommendation_text="Consider indexing DISTINCT columns.",
+            reasoning="Indexing columns used in DISTINCT can optimize the removal of duplicates.",
+            priority="MEDIUM",
+            expected_improvement="Improve distinct performance",
+            applies_to="distinct_optimization"
+        ))
+
+    # JOIN_REVIEW
+    @Rule(Fact(join=True))
+    def rule_join_review(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="JOIN_REVIEW",
+            recommendation_text="Review join order and join predicates.",
+            reasoning="Join order can significantly impact execution cost.",
+            priority="LOW",
+            expected_improvement="Improve join efficiency",
+            applies_to="join_optimization"
+        ))
+
+    @Rule(Fact(join=True) & Fact(join_indexed=False) & NOT(Fact(write_heavy=True)))
+    def rule_join_index_opt(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="JOIN_INDEX_OPTIMIZATION",
+            recommendation_text="Create indexes on JOIN columns.",
+            reasoning="JOIN detected and no index found on join columns.",
+            priority="HIGH",
+            expected_improvement="Improve join performance",
+            applies_to="join_optimization"
+        ))
+
+    @Rule(Fact(join=True) & Fact(join_equality=True) & Fact(join_indexed=True))
+    def rule_join_info_opt(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="JOIN_REVIEW",
+            recommendation_text="Current join structure is suitable for efficient indexed joins.",
+            reasoning="Equality-based join with indexed columns is already optimal.",
+            priority="INFO",
+            expected_improvement="None (Optimal)",
+            applies_to="join_optimization"
+        ))
+
+    # Informational Rules (Knowledge Coverage)
+    @Rule(Fact(table=MATCH.t, partitioned=True) & NOT(Fact(table=MATCH.t, partition_key_used=True)))
+    def rule_partition_review(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="PARTITION_REVIEW",
+            recommendation_text="Review partition usage.",
+            reasoning="Partitioned table detected, but partition key is not used.",
+            priority="MEDIUM",
+            expected_improvement="Improve partition pruning",
+            applies_to="partition_optimization"
+        ))
+
+    @Rule(Fact(cte=True))
+    def rule_cte_review(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="CTE_OPTIMIZATION",
+            recommendation_text="Review CTE usage.",
+            reasoning="CTE detected, review for materialization needs.",
+            priority="LOW",
+            expected_improvement="Improve CTE performance",
+            applies_to="cte_optimization"
+        ))
+
+    @Rule(Fact(stats_outdated=True))
+    def rule_stats_review(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="STATISTICS_OPTIMIZATION",
+            recommendation_text="Review statistics freshness.",
+            reasoning="Outdated statistics affect optimizer decisions.",
+            priority="HIGH",
+            expected_improvement="Improve optimizer plan accuracy",
+            applies_to="statistics_optimization"
+        ))
+
+    # ── Updated Join Rules ──
 
     @Rule(Fact(select_star=True))
     def derive_select_list_wide(self):
@@ -360,7 +523,7 @@ class QueryOptimizerRules(KnowledgeEngine):
 
     # ── Index Rules ──
 
-    @Rule(Fact(table=MATCH.t, large=True) & NOT(Fact(table=MATCH.t, index=True)))
+    @Rule(Fact(table=MATCH.t, large=True) & NOT(Fact(table=MATCH.t, index=True)) & NOT(Fact(write_heavy=True)))
     def rule_index_suggestion(self):
         self.record(RecommendationFact(
             recommendation_id=next_id(),
@@ -558,7 +721,7 @@ class QueryOptimizerRules(KnowledgeEngine):
 
     # ── Partition Rules ──
 
-    @Rule(Fact(table=MATCH.t, partitioned=True) & Fact(partition_key_used=True))
+    @Rule(Fact(table=MATCH.t, partitioned=True) & Fact(table=MATCH.t, partition_key_used=True))
     def rule_partition_pruning(self):
         self.record(RecommendationFact(
             recommendation_id=next_id(),
@@ -570,7 +733,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="partition_access"
         ))
 
-    @Rule(Fact(table=MATCH.t, partitioned=True) & NOT(Fact(partition_key_used=True)))
+    @Rule(Fact(table=MATCH.t, partitioned=True) & NOT(Fact(table=MATCH.t, partition_key_used=True)))
     def rule_partition_key_missing(self):
         self.record(RecommendationFact(
             recommendation_id=next_id(),
@@ -580,4 +743,114 @@ class QueryOptimizerRules(KnowledgeEngine):
             priority="MEDIUM",
             expected_improvement="Enable partition pruning to skip irrelevant partitions",
             applies_to="partition_access"
+        ))
+
+    # ── New Rules from Medium Guide / dbjournal ──
+
+    @Rule(Fact(wildcard_like=True))
+    def rule_wildcard_optimization(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="QUERY_REWRITE",
+            recommendation_text="Avoid leading wildcards in LIKE patterns (e.g. LIKE '%term') as they prevent index usage.",
+            reasoning="Source: Medium Guide - Leading wildcards force full table scans because B-tree indexes cannot be used.",
+            priority="MEDIUM",
+            expected_improvement="Enable index usage for search queries",
+            applies_to="filter_optimization"
+        ))
+
+    @Rule(Fact(wrong_datatype=True))
+    def rule_datatype_optimization(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="SCHEMA_OPTIMIZATION",
+            recommendation_text="Use appropriate data types for columns (e.g. DATE instead of VARCHAR for dates, INT for numbers).",
+            reasoning="Source: Medium Guide - Correct data types reduce storage, speed up comparisons, and eliminate needless conversions.",
+            priority="MEDIUM",
+            expected_improvement="Reduce storage and improve comparison speed",
+            applies_to="schema_design"
+        ))
+
+    @Rule(Fact(cursor_used=True))
+    def rule_avoid_cursors(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="PERFORMANCE_TUNING",
+            recommendation_text="Replace cursor-based row-by-row processing with set-based operations (JOIN, subquery, window functions).",
+            reasoning="Source: Medium Guide - Cursors process one row at a time and are resource-intensive; set-based operations are highly optimized.",
+            priority="HIGH",
+            expected_improvement="Significant performance improvement over row-by-row processing",
+            applies_to="query_rewriting"
+        ))
+
+    @Rule(Fact(stored_proc=True))
+    def rule_stored_procedure(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="PERFORMANCE_TUNING",
+            recommendation_text="Use stored procedures to encapsulate complex logic - they are pre-compiled and reuse execution plans efficiently.",
+            reasoning="Source: Medium Guide - Stored procedures reduce network traffic and benefit from cached execution plans.",
+            priority="LOW",
+            expected_improvement="Reduce network traffic and plan compilation overhead",
+            applies_to="query_organization"
+        ))
+
+    @Rule(Fact(too_many_joins=True))
+    def rule_excessive_joins(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="SCHEMA_OPTIMIZATION",
+            recommendation_text="Reduce the number of JOINs by denormalizing strategic columns or using summary tables.",
+            reasoning="Source: Medium Guide - Excessive JOINs increase query complexity and cost; consider schema refactoring.",
+            priority="MEDIUM",
+            expected_improvement="Simplify queries and reduce execution cost",
+            applies_to="schema_design"
+        ))
+
+    @Rule(Fact(union=True) & Fact(too_many_joins=True))
+    def rule_union_vs_join_complexity(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="QUERY_REWRITE",
+            recommendation_text="Consider using UNION ALL with simpler individual queries instead of a single complex query with many JOINs.",
+            reasoning="Source: Medium Guide - Breaking complex queries into simpler parts can improve maintainability and sometimes performance.",
+            priority="LOW",
+            expected_improvement="Improve maintainability and potentially performance",
+            applies_to="query_rewriting"
+        ))
+
+    @Rule(Fact(limit=True) & Fact(order_by=True) & Fact(table=MATCH.t, index=True) & Fact(table=MATCH.t, supports_order=True))
+    def rule_pagination_index(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="PERFORMANCE_TUNING",
+            recommendation_text="Use an index that supports ORDER BY to make LIMIT/OFFSET pagination efficient.",
+            reasoning="Source: Medium Guide - An ordered index allows LIMIT/OFFSET to avoid sorting the entire result set.",
+            priority="HIGH",
+            expected_improvement="Dramatically speed up pagination queries",
+            applies_to="pagination_optimization"
+        ))
+
+    @Rule(Fact(table=MATCH.t, large=True) & Fact(schema_normalized=False))
+    def rule_denormalization(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="SCHEMA_OPTIMIZATION",
+            recommendation_text="Consider strategic denormalization for large tables to reduce JOIN overhead in read-heavy workloads.",
+            reasoning="Source: Medium Guide - Denormalization trades storage for query speed by reducing the need for complex JOINs.",
+            priority="MEDIUM",
+            expected_improvement="Reduce JOIN overhead for large tables",
+            applies_to="schema_design"
+        ))
+
+    @Rule(Fact(subquery=True) & NOT(Fact(correlated_subquery=True)) & Fact(temp_allowed=True))
+    def rule_subquery_to_temp_table(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="QUERY_REWRITE",
+            recommendation_text="Consider using a temporary table to store subquery results for better performance.",
+            reasoning="Source: Medium Guide - Temporary tables simplify complex queries and can improve performance by materializing intermediate results.",
+            priority="MEDIUM",
+            expected_improvement="Simplify complex queries and improve performance",
+            applies_to="query_rewriting"
         ))
