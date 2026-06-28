@@ -26,10 +26,11 @@
 ## 3. أهداف المشروع
 
 1. **بناء نظام خبير تفاعلي عبر الويب:** استبدال إدخال الحقائق اليدوي بنظام مقابلة (Q&A) بواجهة Streamlit جذابة تطرح 44 سؤالاً ذكياً بناءً على إجابات المستخدم.
-2. **ضمان اتساق البيانات:** إضافة طبقة تحقق (Validation Layer) تحتوي على 9 فحوصات لاكتشاف التناقضات في إجابات المستخدم.
-3. **توسيع قاعدة المعرفة:** تغطية 39+ مجموعة قواعد تشمل JOIN, INDEX, SUBQUERY, GROUP BY, DISTINCT, PARTITION, CTE, STATISTICS, WILDCARD, CURSOR, STORED PROCEDURES, WORKLOAD.
-4. **تقديم تقارير مهنية:** عرض نقاط القوة (Strengths) بجانب التوصيات مع خطة عمل مرتبة حسب الأولوية (HIGH, MEDIUM, LOW).
-5. **الشفافية التفسيرية:** تقديم تبرير منطقي (Reasoning) ومدى التأثير المتوقع (Expected Impact) لكل توصية.
+2. **ضمان اتساق البيانات:** إضافة طبقة تحقق (Validation Layer) تحتوي على 10 فحوصات لاكتشاف التناقضات في إجابات المستخدم.
+3. **توسيع قاعدة المعرفة:** تغطية 68 قاعدة تشمل JOIN, INDEX, SUBQUERY, GROUP BY, DISTINCT, PARTITION, CTE, STATISTICS, WILDCARD, CURSOR, STORED PROCEDURES, WORKLOAD, EXPLAIN, PAGINATION, SCAN SELECTION.
+4. **اكتشاف تناقضات المخرجات:** منع التوصيات المتضاربة مثل "أنشئ فهرساً" مع "قلل الفهارس" في بيئات الكتابة المكثفة عبر إضافة الحراس الشرطية (write_heavy guards) على جميع قواعد إنشاء الفهارس.
+5. **تقديم تقارير مهنية:** عرض نقاط القوة (Strengths) بجانب التوصيات مع خطة عمل مرتبة حسب الأولوية (HIGH, MEDIUM, LOW).
+6. **الشفافية التفسيرية:** تقديم تبرير منطقي (Reasoning) ومدى التأثير المتوقع (Expected Impact) لكل توصية.
 
 ---
 
@@ -39,7 +40,7 @@
 بدلاً من طلب حقائق تقنية، يقوم النظام بطرح 44 سؤالاً بسيطاً (نعم/لا أو خيارات) عبر واجهة ويب بتصميم زجاجي داكن مع رسوم متحركة. يتميز هذا التدفق بأنه **شرطي (Conditional)**؛ فإذا أجاب المستخدم بأن الاستعلام لا يحتوي على JOIN، يتم تخطي جميع الأسئلة المتعلقة بالـ JOIN تلقائياً. كما تظهر الأسئلة تباعاً في واجهة شات (Chat Interface) مع شريط تقدم يعرض عدد الأسئلة المجابة.
 
 ### 4.2 التحقق من الاتساق (Consistency Validation)
-قبل تحويل الإجابات إلى حقائق، يقوم النظام بـ 9 فحوصات للمنطق:
+قبل تحويل الإجابات إلى حقائق، يقوم النظام بـ 10 فحوصات للمنطق:
 1. جدول صغير + كلا المربوطين كبيران
 2. JOIN = لا + معلومات ربط مقدمة
 3. Subqueries = لا + عوامل EXISTS/IN/NOT IN مجابة
@@ -49,29 +50,33 @@
 7. UNION = لا + UNION ALL مجاب
 8. جدول صغير + توازي + استجابة حرجة
 9. كتابة مكثفة + لا توجد فهارس تصفية
+10. JOIN = لا + Excessive Joins (تناقض)
 
 ### 4.3 بناء الحقائق (Fact Building)
-يتم تحويل الإجابات إلى 44+ حقيقة قابلة للقراءة تتضمن:
+يتم تحويل الإجابات إلى 61+ حقيقة قابلة للقراءة تتضمن:
 
 #### حقائق أساسية
 `Fact(join=True)`, `Fact(subquery=True)`, `Fact(aggregation=True)`, `Fact(order_by=True)`, `Fact(distinct=True)`, `Fact(cte=True)`, `Fact(having=True)`, `Fact(limit=True)`, `Fact(or_condition=True)`, `Fact(select_star=True)`, `Fact(correlated_subquery=True)`, `Fact(exists=True)`, `Fact(too_many_joins=True)`
 
 #### حقائق مقيدة بجدول (Table-Qualified Facts)
-`Fact(table=t1, large=True)`, `Fact(table=t1, partitioned=True)`, `Fact(table=t1, stats_fresh=True)`, `Fact(table=t1, fragmented=True)`, `Fact(table=t1, partition_key_used=True)`, `Fact(table=t1, covering=True)`
+`Fact(table=t1, large=True)`, `Fact(table=t1, partitioned=True)`, `Fact(table=t1, stats_fresh=True)`, `Fact(table=t1, fragmented=True)`, `Fact(table=t1, partition_key_used=True)`, `Fact(table=t1, covering=True)`, `Fact(table=t1, selective=True)`, `Fact(table=t1, supports_order=True)`, `Fact(table=t1, fk=True)`
 
 #### حقائق مشتقة (Derived Facts)
-`Fact(hash_join_possible=True)`, `Fact(merge_join_possible=True)`, `Fact(nested_loop_possible=True)`, `Fact(semi_join_possible=True)`, `Fact(anti_join_possible=True)`, `Fact(select_minimal=True)` والتي تُشتق آلياً بناءً على خصائص الاستعلام (حجم الجداول، الفهارس، شروط الربط، اختيار الأعمدة).
+`Fact(hash_join_possible=True)`, `Fact(merge_join_possible=True)`, `Fact(nested_loop_possible=True)`, `Fact(semi_join_possible=True)`, `Fact(anti_join_possible=True)`, `Fact(select_minimal=True)`, `Fact(selective=True)`, `Fact(supports_order=True)`, `Fact(where=True)`، تُشتق آلياً بناءً على خصائص الاستعلام (حجم الجداول، الفهارس، شروط الربط، اختيار الأعمدة، وجود WHERE).
 
 #### حقائق بيئة العمل
-`Fact(read_heavy=True)`, `Fact(write_heavy=True)`, `Fact(stats_fresh=True)`, `Fact(stats_outdated=True)`, `Fact(parallel_available=True)`, `Fact(temp_allowed=True)`, `Fact(response_critical=True)`
+`Fact(read_heavy=True)`, `Fact(write_heavy=True)`, `Fact(stats_fresh=True)`, `Fact(stats_outdated=True)`, `Fact(parallel_available=True)`, `Fact(temp_allowed=True)`, `Fact(response_critical=True)`, `Fact(cardinality_accurate=True)`
 
 ### 4.4 محرك الاستدلال (Inference Engine)
-يتم تغذية الحقائق إلى محرك `Experta` الذي يطبق خوارزمية Rete لمطابقة الأنماط مع 39+ مجموعة قواعد. القواعد مرتبة حسب الأولوية:
-- **HIGH:** توصيات فورية وحاسمة (فهارس، خوارزميات ربط، تحسينات هيكلية)
-- **MEDIUM:** تحسينات مهمة (إحصائيات، إعادة كتابة، جداول ملخصة، تقييم مقايضات الكتابة)
-- **LOW:** توصيات تأكيدية وتحقق (مراجعة CTE، التحقق من ضرورة DISTINCT)
+يتم تغذية الحقائق إلى محرك `Experta` الذي يطبق خوارزمية Rete لمطابقة الأنماط مع 68 قاعدة موزعة على 25 فئة. القواعد مرتبة حسب الأولوية:
+- **HIGH:** توصيات فورية وحاسمة (فهارس، خوارزميات ربط، تحسينات هيكلية، تحليل EXPLAIN، فحص الفهارس)
+- **MEDIUM:** تحسينات مهمة (إحصائيات، إعادة كتابة، جداول ملخصة، تقييم مقايضات الكتابة، إلغاء التسوية)
+- **LOW:** توصيات تأكيدية وتحقق (مراجعة CTE، التحقق من ضرورة DISTINCT، مراجعة خطة التنفيذ)
 
-### 4.5 توليد التقرير المهني (Professional Reporting)
+### 4.5 السلامة المنطقية للمخرجات (Output Contradiction Prevention)
+تمت إضافة حراس شرطية (`NOT(Fact(write_heavy=True))`) على جميع قواعد إنشاء الفهارس الستة (filter_index, large_table, join, composite, clustered_range, foreign_key) لمنع التوصية بإنشاء فهارس في بيئات الكتابة المكثفة. تم أيضاً إضافة قاعدة موازنة `rule_filter_index_write_heavy` تشرح المقايضة بين أداء القراءة والكتابة. بالإضافة إلى منع `indexes_healthy` من الإطلاق عند عدم وجود فهارس، ومنع فهرسة التغطية (covering index) عند استخدام `SELECT *`.
+
+### 4.6 توليد التقرير المهني (Professional Reporting)
 يتم تجميع النتائج في تقرير مكون من 7 أقسام:
 1. **Query Profile:** جميع إجابات المستخدم النهائية
 2. **Generated Facts:** جميع الحقائق المولدة
@@ -91,37 +96,41 @@
 |----------|---------|-------------------|
 | تحسين الفهارس (Filter/Join) | إنشاء فهارس للتصفية والربط عند غيابها | HIGH |
 | تحسين التقسيم (Partition) | استخدام Partition Pruning لتقليل I/O | HIGH |
-| خوارزميات الربط (Join) | اختيار Hash/Merge/Nested-Loop/Semi-Join | HIGH |
-| إعادة كتابة الاستعلام (Query Rewrite) | استبدال SELECT*، OR إلى UNION ALL، نقل HAVING إلى WHERE | HIGH |
+| خوارزميات الربط (Join) | اختيار Hash/Merge/Nested-Loop/Semi/Anti/Adaptive | HIGH |
+| تحليل EXPLAIN | استخدام EXPLAIN للاستعلامات ذات WHERE والربط/الفرعية/التجميع | LOW |
+| إعادة كتابة الاستعلام (Query Rewrite) | استبدال SELECT*، OR إلى UNION ALL، نقل HAVING إلى WHERE، NOT IN إلى NOT EXISTS | HIGH |
 | تحسين التجميع (Group By) | جداول ملخصة، فهرسة أعمدة GROUP BY | MEDIUM |
 | تحسين DISTINCT | فهرسة أعمدة DISTINCT أو التحقق من ضرورته | MEDIUM |
-| إحصائيات وتوزيع (Statistics) | إنشاء Histogram لتحسين تقدير الكلفة | MEDIUM |
-| تحسين المحتوى الفرعي (Subquery/CTE) | تجسيد (Materialization) لتجنب التنفيذ المتكرر | MEDIUM |
+| إحصائيات وتوزيع (Statistics) | إنشاء Histogram لتحسين تقدير الكلفة، تحديث الإحصائيات | MEDIUM |
+| تحسين المحتوى الفرعي (Subquery/CTE) | تجسيد (Materialization) لتجنب التنفيذ المتكرر، دمج مع الاستعلام الأصلي | MEDIUM |
 | إعادة هيكلة المخطط (Denormalization) | تقليل JOINs عبر إلغاء التسوية | MEDIUM |
 | أنماط البحث (Wildcard) | تجنب % البادئة في LIKE | MEDIUM |
 | أنواع البيانات (Data Types) | استخدام أنواع مناسبة (DATE بدلاً من VARCHAR) | MEDIUM |
 | تحسين المؤشرات (Cursors) | استبدال المعالجة صفاً صفاً بعمليات مجموعية | HIGH |
 | الإجراءات المخزنة (Stored Procedures) | استخدام الإجراءات المخزنة للكود المعقد المُجمّع مسبقاً | LOW |
-| بيئة العمل (Workload) | تقليل الفهارس في بيئات الكتابة المكثفة، استخدام التوازي | MEDIUM |
+| بيئة العمل (Workload) | تقليل الفهارس في بيئات الكتابة المكثفة، تقييم المقايضة، استخدام التوازي | MEDIUM |
 | فهرسة التغطية (Covering Index) | استخدام فهرس يغطي جميع الأعمدة المحددة لتجنب الوصول للجدول | HIGH |
+| تحسين الصفحات (Pagination) | استخدام فهارس تدعم ORDER BY مع LIMIT/OFFSET | HIGH |
+| اختيار المسح (Scan Selection) | مسح الفهرس مقابل المسح الكامل، مسح الجداول الصغيرة | HIGH |
+| فحص الاتساق (Consistency) | منع التوصيات المتضاربة عند الكتابة المكثفة | MEDIUM |
 
 ### 5.2 الحقائق (Facts)
-تتكون قاعدة المعرفة من 44+ حقيقة تغطي:
+تتكون قاعدة المعرفة من 61+ حقيقة تغطي:
 - **خصائص الاستعلام:** (JOIN, Subquery, Aggregation, Order By, Distinct, CTE, UNION, HAVING, LIMIT, OR, SELECT*)
 - **خصائص الجدول:** (Table Size, Partitioning, Partition Key Usage, Normalization, Data Types)
 - **حالة الفهارس:** (Filter Index, Join Index, Fragmentation, Composite, Clustered, Unused, FK, Range, Covering)
 - **تفاصيل الربط:** (Size Equality, Indexing, Sorting, Large Tables)
-- **الإحصاءات:** (Stats Freshness, Histogram Availability, Outdated)
+- **الإحصاءات:** (Stats Freshness, Histogram Availability, Outdated, Cardinality Accurate)
 - **البيئة:** (Workload Type, Parallelism, Memory, Criticality)
-- **مشتقة:** (Hash Join Possible, Merge Join Possible, Semi Join Possible, Select Minimal)
+- **مشتقة:** (Hash Join Possible, Merge Join Possible, Semi Join Possible, Select Minimal, Selective, Supports Order, Where, FK, Cardinality Accurate)
 
 ---
 
 ## 6. مصادر المعرفة
 تستند القواعد إلى مراجع أكاديمية معتمدة:
-1. **Database System Concepts (Silberschatz, Korth, Sudarshan):** المرجع الأساسي لعمليات Push-down، Join Algorithms (16.5.3 Merge Join، 16.5.4 Hash Join)، Covering Index (16.4)، Partition Pruning، Top-N Optimization، وتقدير الكلفة بالإحصائيات.
+1. **Database System Concepts (Silberschatz, Korth, Sudarshan):** المرجع الأساسي لعمليات Push-down، Join Algorithms (16.5.3 Merge Join، 16.5.4 Hash Join)، Covering Index (16.4)، Partition Pruning، Top-N Optimization، وتقدير الكلفة بالإحصائيات، Cardinality Estimation، Adaptive Join.
 2. **dbjournal.ro:** مصدر لتقنيات تحسين الفهارس الانتقائية ومشكلة OR وتأثير SELECT* وتجزؤ الفهارس وتكلفة الفهارس في بيئات الكتابة.
-3. **Medium (Women in Tech):** دليل عملي لتحسين استعلامات SQL الشائعة، يشمل تحسين أنماط LIKE، أنواع البيانات، المؤشرات، الإجراءات المخزنة، والـ Denormalization.
+3. **Medium (Women in Tech):** دليل عملي لتحسين استعلامات SQL الشائعة، يشمل تحسين أنماط LIKE، أنواع البيانات، المؤشرات، الإجراءات المخزنة، والـ Denormalization، واستخدام EXPLAIN.
 
 ---
 
@@ -129,14 +138,13 @@
 
 ```
 ├── app.py                 # واجهة Streamlit (Glassmorphism، 44 سؤالاً، شات تفاعلي)
-├── validation.py          # 9 فحوصات منطقية لاكتشاف التناقضات
-├── fact_builder.py        # تحويل الإجابات إلى 44+ حقيقة (Table-Qualified + Derived)
+├── validation.py          # 10 فحوصات منطقية لاكتشاف التناقضات
+├── fact_builder.py        # تحويل الإجابات إلى 61+ حقيقة (Table-Qualified + Derived + Cardinality)
 ├── optimizer_engine.py    # واجهة تشغيل محرك Experta
 ├── report_generator.py    # بناء التقرير المهني (توصيات + خطة عمل بالأولوية)
-├── test_pipeline.py       # اختبار آلي للـ pipeline بالكامل
 ├── engine/
 │   ├── facts.py           # تعريف هيكل RecommendationFact (category, priority, reasoning, impact)
-│   ├── rules.py           # 39+ مجموعة قواعد استدلالية (Rules)
+│   ├── rules.py           # 68 قاعدة استدلالية في 25 فئة (Rules)
 │   └── optimizer.py       # إعدادات محرك Experta وترتيب التوصيات بالأولوية
 └── docs/
     ├── report.md          # هذا التقرير الأكاديمي
@@ -148,7 +156,7 @@
 ## 8. تدفق البيانات (Data Flow)
 
 ```
-إجابات المستخدم (44) ← 9 فحوصات تحقق ← 44+ حقيقة Experta ← Rete Algorithm ← 28+ توصية
+إجابات المستخدم (44) ← 10 فحوصات تحقق ← 61+ حقيقة Experta ← Rete Algorithm ← حتى 39 توصية
 
   (1) Query Profile          (3) Optimization Strengths     (5) Priority Action Plan
   (2) Generated Facts        (4) Recommendations            (6) Sources Referenced
@@ -157,17 +165,21 @@
 ---
 
 ## 9. الخلاصة
-يمثل هذا المشروع تطبيقاً متكاملاً للنظم الخبيرة باستخدام Streamlit و Experta. مع 44 سؤالاً شرطياً، و9 فحوصات اتساق، و39+ مجموعة قواعد موزعة على 15 فئة تغطي كامل جوانب تحسين استعلامات SQL، أصبح النظام قادراً على تشخيص حالة الاستعلام بدقة وتقديم خطة تحسين ذات أولوية مع تبرير منطقي ومرجع أكاديمي لكل توصية.
+يمثل هذا المشروع تطبيقاً متكاملاً للنظم الخبيرة باستخدام Streamlit و Experta. مع 44 سؤالاً شرطياً، و10 فحوصات اتساق، و68 قاعدة موزعة على 25 فئة تغطي كامل جوانب تحسين استعلامات SQL، أصبح النظام قادراً على تشخيص حالة الاستعلام بدقة وتقديم خطة تحسين ذات أولوية مع تبرير منطقي ومرجع أكاديمي لكل توصية.
 
 الميزات الجديدة:
-- **اكتشاف تناقضات المخرجات:** منع التوصيات المتضاربة مثل "أنشئ فهرساً" مع "قلل الفهارس" في بيئات الكتابة المكثفة
+- **اكتشاف تناقضات المخرجات:** منع التوصيات المتضاربة مثل "أنشئ فهرساً" مع "قلل الفهارس" في بيئات الكتابة المكثفة عبر 6 حراس شرطية
 - **فهرسة التغطية (Covering Index):** استنتاج آلي من عدم استخدام SELECT* مع وجود فهرس مركب
-- **مقايضات الأداء:** استبدال التوصيات المتضاربة بتوصية متوازنة توضح المقايضة
+- **مقايضات الأداء:** استبدال التوصيات المتضاربة بتوصية متوازنة توضح المقايضة (write_heavy tradeoff)
+- **الاشتقاق الذكي:** استنتاج `selective` و `supports_order` و `where` آلياً من الإجابات دون حاجة لأسئلة إضافية
+- **تحليل EXPLAIN:** إضافة توصيات استخدام EXPLAIN للاستعلامات المعقدة
+- **فحص التناقض العاشر:** اكتشاف حالات "لا يوجد JOIN" مع "3+ جداول مربوطة"
 
 يجمع النظام بين:
 - **واجهة ويب حديثة:** glassmorphism، رسوم متحركة، شات تفاعلي، شريط تقدم
 - **منطق استدلالي غير إجرائي:** Rete algorithm عبر Experta
 - **توصيات محكمة:** أولوية + فئة + مبرر + أثر متوقع
 - **مراجع معلنة:** كل توصية تستند إلى مصدر أكاديمي موثق
+- **سلامة منطقية:** منع التناقضات في المخرجات والمدخلات
 
 هذا يجعله نموذجاً مثالياً للدراسة الأكاديمية في مجال النظم الخبيرة، قواعد البيانات، والذكاء الاصطناعي.

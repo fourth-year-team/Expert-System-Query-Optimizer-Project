@@ -9,24 +9,26 @@ This diagram shows the end-to-end pipeline from the interactive Streamlit interv
 flowchart TB
     User(["User"]) --> Streamlit["Streamlit Web UI<br/>(Chat-based Glassmorphism)"]
     Streamlit --> Q["Interactive Questionnaire<br/>44 Questions (Conditional Logic)"]
-    Q -->     V{"Validation Layer<br/>9 Consistency Checks"}
+    Q -->     V{"Validation Layer<br/>10 Consistency Checks"}
     
     V -->|"Inconsistent"| Q
-    V -->|"Consistent"| FB["Fact Builder<br/>(Human-Readable Mapping<br/>44+ Facts including<br/>Table-Qualified & Derived)"]
+    V -->|"Consistent"| FB["Fact Builder<br/>(Human-Readable Mapping<br/>61+ Facts including<br/>Table-Qualified, Derived<br/>& Cardinality Facts)"]
     
     FB --> IE["Inference Engine<br/>(Experta - Rete Algorithm)"]
     
-    subgraph KB["Knowledge Base (39+ Rule Groups)"]
-        R1["Join Rules<br/>(Hash/Merge/Nested-Loop/Semi/Anti)"]
-        R2["Index Rules<br/>(Filter/Join/Composite/Fragmented/Unused/FK/Clustered/Range)"]
-        R3["Subquery/CTE Rules<br/>(Exists/IN/NOT IN/Correlated/Materialization)"]
+    subgraph KB["Knowledge Base (68 Rule Groups)"]
+        R1["Join Rules<br/>(Hash/Merge/Nested-Loop/Semi/Anti/Adaptive)"]
+        R2["Index Rules<br/>(Filter/Join/Composite/Fragmented/Unused/FK/Clustered/Range/Covering)"]
+        R3["Subquery/CTE Rules<br/>(Exists/IN/NOT IN/Correlated/Materialization/Merge)"]
         R4["Aggregation Rules<br/>(Group By/Summary Tables/Having/Filter Pushdown)"]
-        R5["Stats Rules<br/>(Up-to-date/Histogram/Cardinality)"]
-        R6["Partition Rules<br/>(Pruning/Key Usage)"]
+        R5["Stats Rules<br/>(Up-to-date/Histogram/Cardinality/Data Distribution)"]
+        R6["Partition Rules<br/>(Pruning/Key Usage/Review)"]
         R7["Wildcard/DataType Rules<br/>(Leading Wildcard/Appropriate Types)"]
         R8["Cursor/Stored Proc Rules<br/>(Set-based Rewrite/Pre-compiled Logic)"]
         R9["Denormalization Rules<br/>(Excessive Joins/Schema Refactoring)"]
-        R10["Workload Rules<br/>(Read-heavy/Write-heavy/Parallel/Work-Table)"]
+        R10["Workload Rules<br/>(Read-heavy/Write-heavy/Tradeoff/Parallel/Work-Table)"]
+        R11["EXPLAIN Rules<br/>(Join/Subquery/Aggregation with WHERE)"]
+        R12["Scan Selection Rules<br/>(Index Scan/Full Scan/Small Table Scan)"]
     end
     
     KB --> IE
@@ -37,7 +39,7 @@ flowchart TB
     RG --> Out["Final Report:<br/>1. Query Profile<br/>2. Generated Facts<br/>3. Optimization Strengths<br/>4. Execution Summary<br/>5. Prioritized Recommendations<br/>6. Priority Action Plan<br/>7. Sources Referenced"]
 ```
 
-**Description:** The system starts with a Streamlit web UI featuring dark glassmorphism design. A conditional 44-question interview passes through 7 validation checks, maps answers to 43+ facts (including table-qualified `Fact(table=t1, large=True)` and derived join algorithm facts), and uses the Rete algorithm to fire 39+ rule groups from the knowledge base. The final report includes a query profile, generated facts, optimization strengths, recommendations with priority/impact, and a sorted priority action plan.
+**Description:** The system starts with a Streamlit web UI featuring dark glassmorphism design. A conditional 44-question interview passes through 10 validation checks, maps answers to 61+ facts (including table-qualified `Fact(table=t1, large=True)`, derived join algorithm facts, and cardinality facts), and uses the Rete algorithm to fire 68 rule groups from the knowledge base. The final report includes a query profile, generated facts, optimization strengths, recommendations with priority/impact, and a sorted priority action plan.
 
 ---
 
@@ -68,10 +70,10 @@ flowchart TD
     
     Q4 --> End
 
-    End --> V["9 Validation Checks<br/>- small + both_large<br/>- no joins + join details<br/>- no subqueries + subquery ops<br/>- no partition + key used<br/>- no order_by + data_sorted<br/>- small + excessive_joins<br/>- no union + union_all<br/>- small + parallel + critical<br/>- write-heavy + no indexes"]
+    End --> V["10 Validation Checks<br/>- small + both_large<br/>- no joins + join details<br/>- no subqueries + subquery ops<br/>- no partition + key used<br/>- no order_by + data_sorted<br/>- small + excessive_joins<br/>- no union + union_all<br/>- small + parallel + critical<br/>- write-heavy + no indexes<br/>- no joins + excessive_joins"]
 ```
 
-**Description:** To improve user experience, the system uses conditional logic with `depends_on` tuples. If a primary feature is absent, all dependent sub-questions are skipped. The validation layer then runs 7 consistency checks before facts are built.
+**Description:** To improve user experience, the system uses conditional logic with `depends_on` tuples. If a primary feature is absent, all dependent sub-questions are skipped. The validation layer then runs 10 consistency checks before facts are built.
 
 ---
 
@@ -106,6 +108,9 @@ flowchart TD
     B --> C8{Write-heavy AND<br/>No Filter Indexes?}
     C8 -->|Yes| W8[Warning: Index Tradeoff]
     
+    B --> C9{No Joins AND<br/>Excessive Joins?}
+    C9 -->|Yes| W9[Warning: Join Contradiction]
+    
     W1 --> Choice
     W2 --> Choice
     W3 --> Choice
@@ -114,6 +119,7 @@ flowchart TD
     W6 --> Choice
     W7 --> Choice
     W8 --> Choice
+    W9 --> Choice
     
     C1 -->|No| Choice
     C2 -->|No| Choice
@@ -123,13 +129,14 @@ flowchart TD
     C6 -->|No| Choice
     C7 -->|No| Choice
     C8 -->|No| Choice
+    C9 -->|No| Choice
     
     Choice{User Choice}
     Choice -->|Correct Answers| A
-    Choice -->|Continue Anyway| FB[Build 44+ Facts<br/>Table-Qualified + Derived]
+    Choice -->|Continue Anyway| FB[Build 61+ Facts<br/>Table-Qualified + Derived + Cardinality]
 ```
 
-**Description:** The validation layer now contains 7 contradiction checks (up from 3). Each detected inconsistency produces a specific warning. The user can either correct answers or proceed — preventing the inference engine from processing contradictory data.
+**Description:** The validation layer now contains 10 contradiction checks. Each detected inconsistency produces a specific warning. The user can either correct answers or proceed — preventing the inference engine from processing contradictory data.
 
 ---
 
@@ -138,24 +145,27 @@ Mapping the updated rule categories to the final output.
 
 ```mermaid
 flowchart LR
-    subgraph Inputs["Input Facts (43+)"]
+    subgraph Inputs["Input Facts (61+)"]
         F1["Query Facts<br/>(Join/Subquery/CTE/Union/etc.)"]
         F2["Table Facts<br/>(size=large, partitioned,<br/>table=t1, large=True)"]
-        F3["Index Facts<br/>(filter/join/fragmented/<br/>composite/unused/FK/range)"]
-        F4["Stats/Workload Facts<br/>(stats_fresh, read_heavy,<br/>parallel, temp_allowed)"]
-        F5["Derived Facts<br/>(hash_join_possible,<br/>semi_join_possible,<br/>merge_join_possible)"]
+        F3["Index Facts<br/>(filter/join/fragmented/<br/>composite/unused/FK/range/covering)"]
+        F4["Stats/Workload Facts<br/>(stats_fresh, read_heavy,<br/>parallel, temp_allowed, cardinality)"]
+        F5["Derived Facts<br/>(hash_join_possible,<br/>semi_join_possible,<br/>selective, supports_order, where)"]
     end
     
-    subgraph Rules["Knowledge Base (39+ Rule Groups)"]
-        R1["Filter/Join Index Opt<br/>(Create indexes,<br/>avoid full scan)"]
+    subgraph Rules["Knowledge Base (68 Rule Groups)"]
+        R1["Filter/Join Index Opt<br/>(Create indexes,<br/>avoid full scan, covering)"]
         R2["Group By / Distinct Opt<br/>(Summary tables,<br/>index distinct cols)"]
-        R3["Join Strategy<br/>(Hash/Merge/Nested-Loop/<br/>Semi-Join selection)"]
-        R4["Subquery/CTE Rewrite<br/>(Materialization,<br/>semi-join rewrite)"]
-        R5["Partition/Stats Opt<br/>(Pruning, histograms,<br/>cardinality estimation)"]
-        R6["Query Rewrite<br/>(OR->UNION ALL,<br/>SELECT*, HAVING->WHERE)"]
+        R3["Join Strategy<br/>(Hash/Merge/Nested-Loop/<br/>Semi/Adaptive selection)"]
+        R4["Subquery/CTE Rewrite<br/>(Materialization,<br/>semi-join/anti-join rewrite)"]
+        R5["Partition/Stats Opt<br/>(Pruning, histograms,<br/>cardinality, data distribution)"]
+        R6["Query Rewrite<br/>(OR->UNION ALL,<br/>SELECT*, HAVING->WHERE,<br/>NOT IN->NOT EXISTS)"]
         R7["Wildcard/DataType/Cursor<br/>(Avoid leading %,<br/>set-based rewrite)"]
         R8["Denormalization/Excessive Joins<br/>(Schema refactoring,<br/>reduce JOIN count)"]
-        R9["Workload Tuning<br/>(Read vs Write,<br/>Parallel/Work-Table)"]
+        R9["Workload Tuning<br/>(Read vs Write tradeoff,<br/>Parallel/Work-Table,<br/>write-heavy guards)"]
+        R10["EXPLAIN Analysis<br/>(Join/Subquery/Aggregation<br/>with WHERE clause)"]
+        R11["Scan Selection<br/>(Index Scan/Full Scan/<br/>Small Table Scan)"]
+        R12["Pagination<br/>(LIMIT/OFFSET with index,<br/>ORDER BY index)"]
     end
     
     subgraph Output["Report Sections"]
@@ -174,7 +184,7 @@ flowchart LR
     Rules --> S5
 ```
 
-**Description:** The updated assembly shows 43+ input facts including table-qualified and derived join-algorithm facts, feeding into 39+ rule groups. The output now includes a full query profile, recommendations with priority/impact, and a sorted priority action plan.
+**Description:** The updated assembly shows 61+ input facts including table-qualified, derived join-algorithm facts, derived selectivity/ordering facts, and cardinality facts, feeding into 68 rule groups across 25 categories. The output now includes a full query profile, recommendations with priority/impact, and a sorted priority action plan.
 
 ---
 
@@ -183,11 +193,11 @@ The high-level view of the project's operational cycle.
 
 ```mermaid
 flowchart LR
-    Step1["Streamlit Interview<br/>44 Conditional Questions"] --> Step2["Validate & Build Facts<br/>7 Checks → 43+ Facts"]
-    Step2 --> Step3["Inference Engine<br/>Experta (Rete Algorithm)"]
+    Step1["Streamlit Interview<br/>44 Conditional Questions"] --> Step2["Validate & Build Facts<br/>10 Checks → 61+ Facts"]
+    Step2 --> Step3["Inference Engine<br/>Experta (Rete Algorithm)<br/>68 Rules → 25 Categories"]
     Step3 --> Step4["Report Generation<br/>Prioritized Action Plan"]
     Step4 --> Step5["DBA Implementation"]
     Step5 -.->|"Feedback"| Step1
 ```
 
-**Description:** The lifecycle now begins with a Streamlit web-based interview. The feedback loop allows the DBA to refine answers based on real-world implementation results, creating a continuous improvement cycle.
+**Description:** The lifecycle begins with a Streamlit web-based interview. The feedback loop allows the DBA to refine answers based on real-world implementation results, creating a continuous improvement cycle.

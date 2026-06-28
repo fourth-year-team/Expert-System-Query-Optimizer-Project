@@ -535,7 +535,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="index_creation"
         ))
 
-    @Rule(Fact(multi_column_predicate=True) & Fact(table=MATCH.t, index=True) & NOT(Fact(table=MATCH.t, composite=True)) & Fact(table=MATCH.t, large=True))
+    @Rule(Fact(multi_column_predicate=True) & Fact(table=MATCH.t, index=True) & NOT(Fact(table=MATCH.t, composite=True)) & Fact(table=MATCH.t, large=True) & NOT(Fact(write_heavy=True)))
     def rule_composite_index_suggestion(self):
         self.record(RecommendationFact(
             recommendation_id=next_id(),
@@ -547,7 +547,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="index_creation"
         ))
 
-    @Rule(Fact(range_predicate=True) & Fact(table=MATCH.t, index=True) & NOT(Fact(table=MATCH.t, clustered=True)))
+    @Rule(Fact(range_predicate=True) & Fact(table=MATCH.t, index=True) & NOT(Fact(table=MATCH.t, clustered=True)) & NOT(Fact(write_heavy=True)))
     def rule_clustered_index_for_range(self):
         self.record(RecommendationFact(
             recommendation_id=next_id(),
@@ -559,7 +559,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="index_type_selection"
         ))
 
-    @Rule(Fact(fk=True) & Fact(table=MATCH.t, index=True) & NOT(Fact(table=MATCH.t, on_join=True)))
+    @Rule(Fact(fk=True) & Fact(table=MATCH.t, index=True) & NOT(Fact(table=MATCH.t, on_join=True)) & NOT(Fact(write_heavy=True)))
     def rule_index_on_foreign_key(self):
         self.record(RecommendationFact(
             recommendation_id=next_id(),
@@ -853,4 +853,40 @@ class QueryOptimizerRules(KnowledgeEngine):
             priority="MEDIUM",
             expected_improvement="Simplify complex queries and improve performance",
             applies_to="query_rewriting"
+        ))
+
+    @Rule(Fact(where=True) & Fact(join=True))
+    def rule_use_explain_join(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="QUERY_ANALYSIS",
+            recommendation_text="Use EXPLAIN / EXPLAIN ANALYZE to analyze the query execution plan and identify bottlenecks.",
+            reasoning="Source: Medium Guide - Execution plans reveal missing indexes, full table scans, and suboptimal join strategies.",
+            priority="LOW",
+            expected_improvement="Identify specific bottlenecks for targeted optimization",
+            applies_to="query_analysis"
+        ))
+
+    @Rule(Fact(where=True) & Fact(subquery=True))
+    def rule_use_explain_subquery(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="QUERY_ANALYSIS",
+            recommendation_text="Use EXPLAIN / EXPLAIN ANALYZE to analyze the query execution plan and identify bottlenecks.",
+            reasoning="Source: Medium Guide - Execution plans reveal missing indexes, full table scans, and suboptimal join strategies.",
+            priority="LOW",
+            expected_improvement="Identify specific bottlenecks for targeted optimization",
+            applies_to="query_analysis"
+        ))
+
+    @Rule(Fact(where=True) & Fact(aggregation=True))
+    def rule_use_explain_aggregation(self):
+        self.record(RecommendationFact(
+            recommendation_id=next_id(),
+            category="QUERY_ANALYSIS",
+            recommendation_text="Use EXPLAIN / EXPLAIN ANALYZE to analyze the query execution plan and identify bottlenecks.",
+            reasoning="Source: Medium Guide - Execution plans reveal missing indexes, full table scans, and suboptimal join strategies.",
+            priority="LOW",
+            expected_improvement="Identify specific bottlenecks for targeted optimization",
+            applies_to="query_analysis"
         ))

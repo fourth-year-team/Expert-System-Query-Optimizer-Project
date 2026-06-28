@@ -28,4 +28,7 @@ def validate_answers(answers):
     if answers.get('workload') == 'write-heavy' and answers.get('index_filter') == False:
         inconsistencies.append("Write-heavy workload with no filter indexes: creating new indexes improves reads but slows writes — review tradeoffs.")
 
+    if not answers.get('join_ops') and answers.get('excessive_joins'):
+        inconsistencies.append("Join operations marked as 'No', but '3+ tables joined' suggests the query uses JOINs.")
+
     return inconsistencies

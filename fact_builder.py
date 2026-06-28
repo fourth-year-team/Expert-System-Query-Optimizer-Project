@@ -22,7 +22,7 @@ def build_facts(answers):
     if answers.get('or_condition'): facts.append(Fact(or_condition=True))
     if answers.get('select_star'): facts.append(Fact(select_star=True))
     if answers.get('select_minimal'): facts.append(Fact(select_minimal=True))
-    if answers.get('where_clause'): facts.append(Fact(where=True))
+
     if answers.get('correlated_subquery'): facts.append(Fact(correlated_subquery=True))
     if answers.get('wildcard_search'): facts.append(Fact(wildcard_like=True))
     if answers.get('cursor_usage'): facts.append(Fact(cursor_used=True))
@@ -33,8 +33,9 @@ def build_facts(answers):
     if answers.get('result_critical'): facts.append(Fact(fast_response=True))
     if answers.get('intermediate_large'): facts.append(Fact(intermediate_large=True))
     if answers.get('range_predicate'): facts.append(Fact(range_predicate=True))
-    if answers.get('fk_indexed') == False: facts.append(Fact(fk_indexed=False))
-    elif answers.get('fk_indexed') == True: facts.append(Fact(fk_indexed=True))
+    if answers.get('fk_indexed') is not None:
+        facts.append(Fact(fk_indexed=answers.get('fk_indexed')))
+        facts.append(Fact(fk=True))
 
     # ── Table Size → Rich Table Facts ──
     ts = answers.get('table_size')
@@ -76,6 +77,16 @@ def build_facts(answers):
     if comp_idx and not answers.get('select_star', False):
         facts.append(Fact(select_minimal=True))
         facts.append(Fact(table=table, covering=True))
+
+    has_where = answers.get('index_filter') is not None or answers.get('range_predicate') or answers.get('or_condition')
+    if has_where:
+        facts.append(Fact(where=True))
+
+    if (idx_filter or idx_join) and has_where and ts == 'large':
+        facts.append(Fact(table=table, selective=True))
+
+    if answers.get('order_by') and (answers.get('clustered_index') or idx_filter or answers.get('data_sorted')):
+        facts.append(Fact(table=table, supports_order=True))
 
     if comp_idx:
         facts.append(Fact(table=table, composite=True))
@@ -138,6 +149,9 @@ def build_facts(answers):
 
     if answers.get('histogram_available'):
         facts.append(Fact(table=table, data_known=True))
+
+    if stats_ok and answers.get('histogram_available'):
+        facts.append(Fact(cardinality_accurate=True))
 
     # ── Workload ──
     wl = answers.get('workload')
