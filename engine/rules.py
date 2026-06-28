@@ -613,10 +613,10 @@ class QueryOptimizerRules(KnowledgeEngine):
             recommendation_id=next_id(),
             category="PERFORMANCE_TUNING",
             recommendation_text="Use an index that supports ORDER BY with LIMIT/OFFSET to avoid a full sort",
-            reasoning="Source: Database System Concepts Ch16 - An ordered index allows LIMIT execution without sorting all data",
+            reasoning="Source: Database System Concepts Ch16, Medium Guide - An ordered index allows LIMIT execution without sorting all data",
             priority="HIGH",
             expected_improvement="Avoid Full Sort and improve pagination query performance",
-            applies_to="limit_offset_optimization"
+            applies_to="pagination_optimization"
         ))
 
     # ── Statistics Rules ──
@@ -817,18 +817,6 @@ class QueryOptimizerRules(KnowledgeEngine):
             priority="LOW",
             expected_improvement="Improve maintainability and potentially performance",
             applies_to="query_rewriting"
-        ))
-
-    @Rule(Fact(limit=True) & Fact(order_by=True) & Fact(table=MATCH.t, index=True) & Fact(table=MATCH.t, supports_order=True))
-    def rule_pagination_index(self):
-        self.record(RecommendationFact(
-            recommendation_id=next_id(),
-            category="PERFORMANCE_TUNING",
-            recommendation_text="Use an index that supports ORDER BY to make LIMIT/OFFSET pagination efficient.",
-            reasoning="Source: Medium Guide - An ordered index allows LIMIT/OFFSET to avoid sorting the entire result set.",
-            priority="HIGH",
-            expected_improvement="Dramatically speed up pagination queries",
-            applies_to="pagination_optimization"
         ))
 
     @Rule(Fact(table=MATCH.t, large=True) & Fact(schema_normalized=False))

@@ -61,6 +61,4 @@ def generate_report(answers, facts, results):
     report.append("  END OF REPORT")
     report.append("=" * 60)
 
-    final_report = "\n".join(report)
-    print(final_report)
-    return final_report
+    return "\n".join(report)

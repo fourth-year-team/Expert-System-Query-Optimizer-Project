@@ -1,7 +1,6 @@
 import streamlit as st
 import fact_builder
 import optimizer_engine
-import report_generator
 import validation
 
 st.set_page_config(page_title="SQL Optimizer Expert", page_icon="🚀", layout="centered")
@@ -376,13 +375,9 @@ hr { border-color: var(--border-subtle) !important; }
 """, unsafe_allow_html=True)
 
 QUESTIONS = [
-    # ── Query Structure ──
+    # ── Query Structure (parents before children) ──
     {"id": "join_ops", "text": "Does the query contain JOIN operations?", "type": "yn"},
     {"id": "subqueries", "text": "Does the query contain subqueries?", "type": "yn"},
-    {"id": "correlated_subquery", "text": "Are the subqueries correlated (reference outer query columns)?", "type": "yn", "depends_on": ("subqueries", True)},
-    {"id": "exists", "text": "Does the query use EXISTS?", "type": "yn", "depends_on": ("subqueries", True)},
-    {"id": "in", "text": "Does the query use IN?", "type": "yn", "depends_on": ("subqueries", True)},
-    {"id": "not_in", "text": "Does the query use NOT IN?", "type": "yn", "depends_on": ("subqueries", True)},
     {"id": "group_by", "text": "Does the query contain GROUP BY?", "type": "yn"},
     {"id": "having", "text": "Does the query use HAVING (filter after aggregation)?", "type": "yn"},
     {"id": "order_by", "text": "Does the query contain ORDER BY?", "type": "yn"},
@@ -393,17 +388,24 @@ QUESTIONS = [
     {"id": "or_condition", "text": "Does the query contain OR conditions in WHERE?", "type": "yn"},
     {"id": "select_star", "text": "Does the query use SELECT *?", "type": "yn"},
 
+    # ── Subquery Details (depends on subqueries) ──
+    {"id": "correlated_subquery", "text": "Are the subqueries correlated (reference outer query columns)?", "type": "yn", "depends_on": ("subqueries", True)},
+    {"id": "exists", "text": "Does the query use EXISTS?", "type": "yn", "depends_on": ("subqueries", True)},
+    {"id": "in", "text": "Does the query use IN?", "type": "yn", "depends_on": ("subqueries", True)},
+    {"id": "not_in", "text": "Does the query use NOT IN?", "type": "yn", "depends_on": ("subqueries", True)},
+
     # ── Table / Schema ──
     {"id": "table_size", "text": "How would you describe the table size?", "type": "choice", "options": ["small", "medium", "large"]},
     {"id": "partitioned", "text": "Is the table partitioned?", "type": "yn"},
-    {"id": "partition_key_used", "text": "Is the partition key used in WHERE?", "type": "yn", "depends_on": ("partitioned", True)},
     {"id": "normalized_schema", "text": "Is the database schema properly normalized?", "type": "yn"},
     {"id": "data_type_issues", "text": "Are there any inappropriate data types (e.g. VARCHAR for dates)?", "type": "yn"},
     {"id": "excessive_joins", "text": "Does the query join 3 or more tables?", "type": "yn"},
 
-    # ── Indexes ──
+    # ── Partition Details (depends on partitioned) ──
+    {"id": "partition_key_used", "text": "Is the partition key used in WHERE?", "type": "yn", "depends_on": ("partitioned", True)},
+
+    # ── General Indexes ──
     {"id": "index_filter", "text": "Are indexes available on filter (WHERE) columns?", "type": "yn"},
-    {"id": "index_join", "text": "Are indexes available on join columns?", "type": "yn", "depends_on": ("join_ops", True)},
     {"id": "composite_index", "text": "Is a composite (multi-column) index available?", "type": "yn"},
     {"id": "clustered_index", "text": "Is a clustered index available?", "type": "yn"},
     {"id": "index_fragmented", "text": "Are indexes fragmented?", "type": "yn"},
@@ -411,7 +413,10 @@ QUESTIONS = [
     {"id": "fk_indexed", "text": "Are foreign key columns indexed?", "type": "yn"},
     {"id": "range_predicate", "text": "Does WHERE use range conditions (BETWEEN, >, <)?", "type": "yn"},
 
-    # ── Join Details ──
+    # ── Join Index (depends on join_ops) ──
+    {"id": "index_join", "text": "Are indexes available on join columns?", "type": "yn", "depends_on": ("join_ops", True)},
+
+    # ── Join Details (all depend on join_ops) ──
     {"id": "both_large", "text": "Are both joined tables large?", "type": "yn", "depends_on": ("join_ops", True)},
     {"id": "one_smaller", "text": "Is one relation significantly smaller than the other?", "type": "yn", "depends_on": ("join_ops", True)},
     {"id": "join_equality", "text": "Is the join condition equality-based?", "type": "yn", "depends_on": ("join_ops", True)},
@@ -593,18 +598,119 @@ elif st.session_state.stage == "VALIDATION":
 elif st.session_state.stage == "RESULT":
     st.markdown(
         '<div class="chat-row assistant">'
-        '<div class="chat-bubble assistant">✅ Analysis complete! Here is your optimization report.</div>'
+        '<div class="chat-bubble assistant"> Analysis complete! Here is your optimization report.</div>'
         '</div>',
         unsafe_allow_html=True
     )
     facts = fact_builder.build_facts(st.session_state.answers)
     results = optimizer_engine.run_optimizer(facts)
-    full_report = report_generator.generate_report(st.session_state.answers, facts, results)
+
+    PRIORITY_MAP = {
+        "HIGH": {"color": "#34d399", "bg": "rgba(52,211,153,0.12)", "badge": "green", "text": "#6ee7b7"},
+        "MEDIUM": {"color": "#fbbf24", "bg": "rgba(251,191,36,0.12)", "badge": "amber", "text": "#fcd34d"},
+        "LOW": {"color": "#60a5fa", "bg": "rgba(96,165,250,0.12)", "badge": "blue", "text": "#93c5fd"},
+        "INFO": {"color": "#94a3b8", "bg": "rgba(148,163,184,0.12)", "badge": "blue", "text": "#94a3b8"},
+    }
 
     st.markdown('<div class="report-section">', unsafe_allow_html=True)
-    st.markdown("---")
-    st.markdown(full_report)
-    st.markdown("---")
+
+    # ── Summary Metrics ──
+    cols = st.columns(4)
+    cols[0].metric("Questions", len(st.session_state.answers))
+    cols[1].metric("Facts", len(facts))
+    cols[2].metric("Recommendations", results['total_recommendations'])
+    priorities = [r['priority'] for r in results['recommendations']]
+    cols[3].metric("HIGH Priority", priorities.count("HIGH"))
+
+    # ── Query Profile ──
+    with st.expander("Query Profile", expanded=False):
+        for q, a in st.session_state.answers.items():
+            st.markdown(
+                '<div style="display:flex;justify-content:space-between;'
+                'padding:0.25rem 0;border-bottom:1px solid rgba(255,255,255,0.04);">'
+                '<span style="color:#94a3b8;">{}</span>'
+                '<span style="color:#f1f5f9;font-weight:500;">{}</span></div>'.format(q, a),
+                unsafe_allow_html=True
+            )
+
+    # ── Generated Facts ──
+    with st.expander("Generated Facts", expanded=False):
+        for f in facts:
+            items = ["{}={}".format(k, v) for k, v in f.items() if k != '__factid__']
+            st.code("Fact({})".format(", ".join(items)), language="text")
+
+    # ── Optimization Strengths ──
+    strengths = []
+    a = st.session_state.answers
+    if a.get('stats_up_to_date'): strengths.append("Statistics are up to date")
+    if a.get('index_join'): strengths.append("Join columns are indexed")
+    if a.get('composite_index'): strengths.append("Composite index exists")
+    if a.get('parallel_available'): strengths.append("Parallel execution is available")
+    if a.get('partitioned'): strengths.append("Partitioning is configured")
+    if a.get('histogram_available'): strengths.append("Histogram statistics are available")
+    if a.get('normalized_schema'): strengths.append("Schema is properly normalized")
+    if a.get('fk_indexed'): strengths.append("Foreign key columns are indexed")
+    if a.get('clustered_index'): strengths.append("Clustered index is configured")
+    if not a.get('select_star'): strengths.append("Specific columns are selected (not SELECT *)")
+    if a.get('join_equality') and a.get('join_indexed'): strengths.append("Equality joins on indexed columns are optimal")
+
+    if strengths:
+        st.markdown('<h2 style="color:#34d399;font-size:1.15rem;font-weight:700;margin:1.5rem 0 0.75rem 0;">Optimization Strengths</h2>', unsafe_allow_html=True)
+        for s in strengths:
+            st.success(s)
+    else:
+        st.info("No specific optimization strengths detected.")
+
+    # ── Recommendations ──
+    st.markdown('<h2 style="color:#60a5fa;font-size:1.15rem;font-weight:700;margin:1.5rem 0 0.75rem 0;">Recommendations</h2>', unsafe_allow_html=True)
+    if not results['recommendations']:
+        st.info("No recommendations triggered. Your query appears well-optimized.")
+    else:
+        for i, rec in enumerate(results['recommendations'], 1):
+            pm = PRIORITY_MAP.get(rec['priority'], PRIORITY_MAP["INFO"])
+            st.markdown(
+                '<div class="glass-card" style="margin-bottom:0.75rem;">'
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">'
+                '<span style="color:{};font-weight:700;font-size:0.9rem;">#{} {}</span>'
+                '<span class="badge badge-{}" style="background:{};color:{};">{}</span>'
+                '</div>'
+                '<div style="color:#f1f5f9;font-weight:500;font-size:0.95rem;margin-bottom:0.4rem;">{}</div>'
+                '<div style="color:#94a3b8;font-size:0.82rem;line-height:1.6;margin-bottom:0.3rem;">{}</div>'
+                '<div style="color:#64748b;font-size:0.78rem;">'
+                '<strong style="color:#94a3b8;">Expected Impact:</strong> {}</div>'
+                '</div>'.format(
+                    pm["color"], i, rec["category"], pm["badge"], pm["bg"], pm["text"],
+                    rec["priority"], rec["recommendation_text"], rec["reasoning"],
+                    rec["expected_improvement"]
+                ),
+                unsafe_allow_html=True
+            )
+
+    # ── Priority Action Plan ──
+    st.markdown('<h2 style="color:#fbbf24;font-size:1.15rem;font-weight:700;margin:1.5rem 0 0.75rem 0;">Priority Action Plan</h2>', unsafe_allow_html=True)
+    sort_key = {"HIGH": 3, "MEDIUM": 2, "LOW": 1, "INFO": 0}
+    sorted_recs = sorted(results['recommendations'], key=lambda r: sort_key.get(r['priority'], 0), reverse=True)
+    for i, rec in enumerate(sorted_recs, 1):
+        pm = PRIORITY_MAP.get(rec['priority'], PRIORITY_MAP["INFO"])
+        st.markdown(
+            '<div style="display:flex;gap:0.75rem;align-items:flex-start;'
+            'padding:0.5rem 0;border-bottom:1px solid rgba(255,255,255,0.04);">'
+            '<span style="background:{};color:#0b1120;font-weight:700;font-size:0.7rem;'
+            'border-radius:50%;width:1.5rem;height:1.5rem;display:flex;'
+            'align-items:center;justify-content:center;flex-shrink:0;">{}</span>'
+            '<div style="flex:1;">'
+            '<span style="color:#f1f5f9;font-size:0.9rem;">{}</span>'
+            '<span class="badge badge-{}" style="margin-left:0.5rem;">{}</span>'
+            '</div></div>'.format(pm["color"], i, rec["recommendation_text"], pm["badge"], rec["priority"]),
+            unsafe_allow_html=True
+        )
+
+    # ── Sources ──
+    st.markdown('<h2 style="color:#94a3b8;font-size:1.15rem;font-weight:700;margin:1.5rem 0 0.75rem 0;">Sources Referenced</h2>', unsafe_allow_html=True)
+    st.markdown('- Database System Concepts (Silberschatz, Korth, Sudarshan)', unsafe_allow_html=True)
+    st.markdown('- dbjournal.ro - SQL optimization techniques', unsafe_allow_html=True)
+    st.markdown('- Medium Guide: Optimizing SQL Query Performance', unsafe_allow_html=True)
+
     st.markdown('</div>', unsafe_allow_html=True)
 
     if st.button("Start New Analysis", use_container_width=True):
