@@ -16,9 +16,12 @@ class QueryOptimizerRules(KnowledgeEngine):
         self.recommendations.append(rec)
         self.reasoning_log.append(f"[{rec['priority']}] {rec['category']}: {rec['recommendation_text']} => {rec['reasoning']}")
 
-    # ── New Rules ──
+  
 
     # FILTER_INDEX_OPTIMIZATION
+#عدم وجود فهرس للفلتر يعني عملية مسح كامل للجدول مما يؤدي الى مسح كامل السجل وهذا ثقيل ومكلف جدا 
+  # write heavey is process use dml (insesrt update delete ) it is bad to use indexed filter with it  
+    #1
     @Rule(Fact(index_filter=False) & NOT(Fact(write_heavy=True)))
     def rule_filter_index_opt(self):
         self.record(RecommendationFact(
@@ -30,7 +33,8 @@ class QueryOptimizerRules(KnowledgeEngine):
             expected_improvement="Improve filter performance",
             applies_to="index_optimization"
         ))
-
+#نفس السابقة تقريبا لكن هنا الجدول كبير وعمليات المسح مكلفة جدا 
+    #2
     @Rule(Fact(table=MATCH.t, large=True) & Fact(index_filter=False) & NOT(Fact(write_heavy=True)))
     def rule_filter_index_large_opt(self, t):
         self.record(RecommendationFact(
@@ -43,6 +47,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="index_optimization"
         ))
 
+    #3
     @Rule(Fact(index_filter=False) & Fact(write_heavy=True))
     def rule_filter_index_write_heavy(self):
         self.record(RecommendationFact(
@@ -56,6 +61,7 @@ class QueryOptimizerRules(KnowledgeEngine):
         ))
 
     # GROUP_BY_OPTIMIZATION
+    #4
     @Rule(Fact(aggregation=True))
     def rule_groupby_opt(self):
         self.record(RecommendationFact(
@@ -68,6 +74,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="aggregation_optimization"
         ))
 
+    #5
     @Rule(Fact(aggregation=True) & Fact(table=MATCH.t, large=True))
     def rule_groupby_large_opt(self):
         self.record(RecommendationFact(
@@ -81,6 +88,7 @@ class QueryOptimizerRules(KnowledgeEngine):
         ))
 
     # DISTINCT_OPTIMIZATION
+    #6
     @Rule(Fact(distinct=True))
     def rule_distinct_opt(self):
         self.record(RecommendationFact(
@@ -93,6 +101,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="distinct_optimization"
         ))
 
+    #7
     @Rule(Fact(distinct=True) & Fact(table=MATCH.t, large=True))
     def rule_distinct_large_opt(self):
         self.record(RecommendationFact(
@@ -106,6 +115,7 @@ class QueryOptimizerRules(KnowledgeEngine):
         ))
 
     # JOIN_REVIEW
+    #8
     @Rule(Fact(join=True))
     def rule_join_review(self):
         self.record(RecommendationFact(
@@ -118,6 +128,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="join_optimization"
         ))
 
+    #9
     @Rule(Fact(join=True) & Fact(join_indexed=False) & NOT(Fact(write_heavy=True)))
     def rule_join_index_opt(self):
         self.record(RecommendationFact(
@@ -130,6 +141,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="join_optimization"
         ))
 
+    #10
     @Rule(Fact(join=True) & Fact(join_equality=True) & Fact(join_indexed=True))
     def rule_join_info_opt(self):
         self.record(RecommendationFact(
@@ -143,6 +155,7 @@ class QueryOptimizerRules(KnowledgeEngine):
         ))
 
     # Informational Rules (Knowledge Coverage)
+    #11
     @Rule(Fact(table=MATCH.t, partitioned=True) & NOT(Fact(table=MATCH.t, partition_key_used=True)))
     def rule_partition_review(self):
         self.record(RecommendationFact(
@@ -155,6 +168,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="partition_optimization"
         ))
 
+    #12
     @Rule(Fact(cte=True))
     def rule_cte_review(self):
         self.record(RecommendationFact(
@@ -167,6 +181,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="cte_optimization"
         ))
 
+    #13
     @Rule(Fact(stats_outdated=True))
     def rule_stats_review(self):
         self.record(RecommendationFact(
@@ -181,28 +196,34 @@ class QueryOptimizerRules(KnowledgeEngine):
 
     # ── Updated Join Rules ──
 
+    #14
     @Rule(Fact(select_star=True))
     def derive_select_list_wide(self):
         self.declare(Fact(select_list_wide=True))
 
+    #15
     @Rule(Fact(select_minimal=True))
     def derive_select_list_narrow(self):
         self.declare(Fact(select_list_minimal=True))
 
+    #16
     @Rule(Fact(where=True) & Fact(subquery=True) & Fact(join=True))
     def derive_push_selection(self):
         self.declare(Fact(push_selection_possible=True))
 
+    #17
     @Rule(Fact(table=MATCH.t, large=True) & NOT(Fact(table=MATCH.t, index=True)))
     def derive_full_scan_scenario(self, t):
         self.declare(Fact(table=t, full_scan_scenario=True))
 
+    #18
     @Rule(Fact(table=MATCH.t, index=True) & Fact(table=MATCH.t, selective=True) & Fact(table=MATCH.t, large=True))
     def derive_index_scan_scenario(self, t):
         self.declare(Fact(table=t, index_scan_possible=True))
 
     # ── Access Path Rules ──
 
+    #19
     @Rule(Fact(table=MATCH.t, large=True) & NOT(Fact(table=MATCH.t, index=True)))
     def rule_full_scan(self):
         self.record(RecommendationFact(
@@ -215,6 +236,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="access_path"
         ))
 
+    #20
     @Rule(Fact(table=MATCH.t, index=True) & Fact(table=MATCH.t, selective=True) & Fact(table=MATCH.t, large=True))
     def rule_index_scan(self):
         self.record(RecommendationFact(
@@ -227,6 +249,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="access_path"
         ))
 
+    #21
     @Rule(Fact(table=MATCH.t, small=True) & Fact(table=MATCH.t, index=True))
     def rule_small_table_scan(self):
         self.record(RecommendationFact(
@@ -239,6 +262,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="access_path"
         ))
 
+    #22
     @Rule(Fact(select_minimal=True) & Fact(table=MATCH.t, index=True) & Fact(table=MATCH.t, covering=True))
     def rule_covering_index_scan(self):
         self.record(RecommendationFact(
@@ -253,6 +277,7 @@ class QueryOptimizerRules(KnowledgeEngine):
 
     # ── Heuristic Optimization Rules ──
 
+    #23
     @Rule(Fact(where=True) & Fact(subquery=True) & Fact(join=True))
     def rule_push_selection_down(self):
         self.record(RecommendationFact(
@@ -265,6 +290,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="query_tree_transformation"
         ))
 
+    #24
     @Rule(Fact(select_star=True))
     def rule_push_projection_down(self):
         self.record(RecommendationFact(
@@ -277,6 +303,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="query_tree_transformation"
         ))
 
+    #25
     @Rule(Fact(view=True) & Fact(where=True))
     def rule_predicate_pushdown_view(self):
         self.record(RecommendationFact(
@@ -289,6 +316,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="view_optimization"
         ))
 
+    #26
     @Rule(Fact(select_star=True) & NOT(Fact(select_minimal=True)))
     def rule_select_list_optimization(self):
         self.record(RecommendationFact(
@@ -303,6 +331,7 @@ class QueryOptimizerRules(KnowledgeEngine):
 
     # ── Join Algorithm Rules ──
 
+    #27
     @Rule(Fact(nested_loop_possible=True) & Fact(one_small=True) & Fact(table=MATCH.t, index=True) & Fact(table=MATCH.t, supports_join=True))
     def rule_nested_loop_join(self):
         self.record(RecommendationFact(
@@ -315,6 +344,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="join_execution"
         ))
 
+    #28
     @Rule(Fact(hash_join_possible=True) & Fact(both_large=True) & NOT(Fact(memory_constrained=True)))
     def rule_hash_join(self):
         self.record(RecommendationFact(
@@ -327,6 +357,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="join_execution"
         ))
 
+    #29
     @Rule(Fact(merge_join_possible=True) & Fact(order_by=True) & Fact(sort_merge_ok=True))
     def rule_merge_join(self):
         self.record(RecommendationFact(
@@ -339,6 +370,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="join_execution"
         ))
 
+    #30
     @Rule(Fact(hash_join_possible=True) & Fact(join_equality=True) & NOT(Fact(table=MATCH.t, on_join=True)))
     def rule_hash_join_no_index(self):
         self.record(RecommendationFact(
@@ -351,6 +383,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="join_execution"
         ))
 
+    #31
     @Rule(Fact(semi_join_possible=True) & Fact(subquery=True))
     def rule_semi_join(self):
         self.record(RecommendationFact(
@@ -363,6 +396,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="join_execution"
         ))
 
+    #32
     @Rule(Fact(anti_join_possible=True) & Fact(not_in=True))
     def rule_anti_join(self):
         self.record(RecommendationFact(
@@ -375,6 +409,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="join_execution"
         ))
 
+    #33
     @Rule(Fact(adaptive_join_possible=True) & Fact(both_large=True) & NOT(Fact(cardinality_accurate=True)))
     def rule_adaptive_join(self):
         self.record(RecommendationFact(
@@ -387,6 +422,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="adaptive_join_execution"
         ))
 
+    #34
     @Rule(Fact(join_ordering_possible=True) & Fact(has_small_table=True))
     def rule_join_order_optimization(self):
         self.record(RecommendationFact(
@@ -401,6 +437,7 @@ class QueryOptimizerRules(KnowledgeEngine):
 
     # ── Query Rewrite Rules ──
 
+    #35
     @Rule(Fact(subquery=True) & Fact(correlated_subquery=True) & NOT(Fact(aggregation=True)) & NOT(Fact(distinct=True)))
     def rule_subquery_to_join(self):
         self.record(RecommendationFact(
@@ -413,6 +450,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="query_rewriting"
         ))
 
+    #36
     @Rule(Fact(in_operator=True) & NOT(Fact(distinct=True)) & Fact(subquery=True) & Fact(correlated_subquery=True))
     def rule_exists_vs_in(self):
         self.record(RecommendationFact(
@@ -425,6 +463,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="subquery_optimization"
         ))
 
+    #37
     @Rule(Fact(having=True) & NOT(Fact(where=True)) & Fact(aggregation=True))
     def rule_where_vs_having(self):
         self.record(RecommendationFact(
@@ -437,6 +476,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="filter_pushdown"
         ))
 
+    #38
     @Rule(Fact(distinct=True) & Fact(pk=True))
     def rule_distinct_optimization(self):
         self.record(RecommendationFact(
@@ -449,6 +489,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="duplicate_removal"
         ))
 
+    #39
     @Rule(Fact(union=True) & NOT(Fact(union_all=True)))
     def rule_union_all_instead_of_union(self):
         self.record(RecommendationFact(
@@ -461,6 +502,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="set_operation_optimization"
         ))
 
+    #40
     @Rule(Fact(or_condition=True))
     def rule_or_condition_optimization(self):
         self.record(RecommendationFact(
@@ -473,6 +515,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="condition_rewriting"
         ))
 
+    #41
     @Rule(Fact(not_in=True) & Fact(subquery=True))
     def rule_not_in_to_not_exists(self):
         self.record(RecommendationFact(
@@ -485,6 +528,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="subquery_optimization"
         ))
 
+    #42
     @Rule(Fact(cte=True) & NOT(Fact(cte_materialized=True)) & Fact(temp_allowed=True))
     def rule_cte_materialization(self):
         self.record(RecommendationFact(
@@ -497,6 +541,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="cte_optimization"
         ))
 
+    #43
     @Rule(Fact(subquery=True) & Fact(correlated_subquery=True) & Fact(temp_allowed=True) & Fact(aggregation=True))
     def rule_materialize_subquery(self):
         self.record(RecommendationFact(
@@ -509,6 +554,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="subquery_optimization"
         ))
 
+    #44
     @Rule(Fact(limit=True) & NOT(Fact(order_by=True)))
     def rule_order_by_with_limit(self):
         self.record(RecommendationFact(
@@ -523,6 +569,7 @@ class QueryOptimizerRules(KnowledgeEngine):
 
     # ── Index Rules ──
 
+    #45
     @Rule(Fact(table=MATCH.t, large=True) & NOT(Fact(table=MATCH.t, index=True)) & NOT(Fact(write_heavy=True)))
     def rule_index_suggestion(self):
         self.record(RecommendationFact(
@@ -535,6 +582,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="index_creation"
         ))
 
+    #46
     @Rule(Fact(multi_column_predicate=True) & Fact(table=MATCH.t, index=True) & NOT(Fact(table=MATCH.t, composite=True)) & Fact(table=MATCH.t, large=True) & NOT(Fact(write_heavy=True)))
     def rule_composite_index_suggestion(self):
         self.record(RecommendationFact(
@@ -547,6 +595,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="index_creation"
         ))
 
+    #47
     @Rule(Fact(range_predicate=True) & Fact(table=MATCH.t, index=True) & NOT(Fact(table=MATCH.t, clustered=True)) & NOT(Fact(write_heavy=True)))
     def rule_clustered_index_for_range(self):
         self.record(RecommendationFact(
@@ -559,6 +608,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="index_type_selection"
         ))
 
+    #48
     @Rule(Fact(fk=True) & Fact(table=MATCH.t, index=True) & NOT(Fact(table=MATCH.t, on_join=True)) & NOT(Fact(write_heavy=True)))
     def rule_index_on_foreign_key(self):
         self.record(RecommendationFact(
@@ -571,6 +621,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="index_creation"
         ))
 
+    #49
     @Rule(Fact(table=MATCH.t, index=True) & Fact(table=MATCH.t, unused=True))
     def rule_unused_index_detection(self):
         self.record(RecommendationFact(
@@ -583,6 +634,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="index_maintenance"
         ))
 
+    #50
     @Rule(Fact(table=MATCH.t, index=True) & Fact(table=MATCH.t, fragmented=True))
     def rule_fragmented_index(self):
         self.record(RecommendationFact(
@@ -595,6 +647,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="index_maintenance"
         ))
 
+    #51
     @Rule(Fact(where=True) & NOT(Fact(subquery=True)) & Fact(table=MATCH.t, index=True) & Fact(table=MATCH.t, on_predicate=True))
     def rule_use_index_for_filter(self):
         self.record(RecommendationFact(
@@ -607,6 +660,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="filter_optimization"
         ))
 
+    #52
     @Rule(Fact(limit=True) & Fact(order_by=True) & Fact(table=MATCH.t, index=True) & Fact(table=MATCH.t, supports_order=True))
     def rule_limit_offset_index(self):
         self.record(RecommendationFact(
@@ -621,6 +675,7 @@ class QueryOptimizerRules(KnowledgeEngine):
 
     # ── Statistics Rules ──
 
+    #53
     @Rule(Fact(stats_outdated=True))
     def rule_statistics_freshness(self):
         self.record(RecommendationFact(
@@ -633,6 +688,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="statistics_maintenance"
         ))
 
+    #54
     @Rule(Fact(intermediate_large=True))
     def rule_reduce_intermediate_results(self):
         self.record(RecommendationFact(
@@ -645,6 +701,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="intermediate_result_optimization"
         ))
 
+    #55
     @Rule(Fact(table=MATCH.t, stats_fresh=True) & NOT(Fact(table=MATCH.t, data_known=True)) & NOT(Fact(histogram_available=True)))
     def rule_data_distribution_check(self):
         self.record(RecommendationFact(
@@ -657,6 +714,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="statistics_enhancement"
         ))
 
+    #56
     @Rule(NOT(Fact(histogram_available=True)) & NOT(Fact(stats_outdated=True)))
     def rule_create_histogram(self):
         self.record(RecommendationFact(
@@ -671,6 +729,7 @@ class QueryOptimizerRules(KnowledgeEngine):
 
     # ── Workload Strategy Rules ──
 
+    #57
     @Rule(Fact(fast_response=True) & Fact(response_critical=True) & Fact(order_by=True))
     def rule_fast_response_strategy(self):
         self.record(RecommendationFact(
@@ -683,6 +742,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="response_time_optimization"
         ))
 
+    #58
     @Rule(Fact(read_heavy=True) & NOT(Fact(write_heavy=True)) & Fact(indexes_healthy=True))
     def rule_maintain_indexes_read_heavy(self):
         self.record(RecommendationFact(
@@ -695,6 +755,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="index_maintenance"
         ))
 
+    #59
     @Rule(Fact(write_heavy=True) & NOT(Fact(read_heavy=True)))
     def rule_minimize_indexes_write_heavy(self):
         self.record(RecommendationFact(
@@ -707,6 +768,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="index_strategy"
         ))
 
+    #60
     @Rule(Fact(parallel_available=True) & Fact(table=MATCH.t, large=True))
     def rule_parallel_execution(self):
         self.record(RecommendationFact(
@@ -721,6 +783,7 @@ class QueryOptimizerRules(KnowledgeEngine):
 
     # ── Partition Rules ──
 
+    #61
     @Rule(Fact(table=MATCH.t, partitioned=True) & Fact(table=MATCH.t, partition_key_used=True))
     def rule_partition_pruning(self):
         self.record(RecommendationFact(
@@ -733,6 +796,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="partition_access"
         ))
 
+    #62
     @Rule(Fact(table=MATCH.t, partitioned=True) & NOT(Fact(table=MATCH.t, partition_key_used=True)))
     def rule_partition_key_missing(self):
         self.record(RecommendationFact(
@@ -747,6 +811,7 @@ class QueryOptimizerRules(KnowledgeEngine):
 
     # ── New Rules from Medium Guide / dbjournal ──
 
+    #63
     @Rule(Fact(wildcard_like=True))
     def rule_wildcard_optimization(self):
         self.record(RecommendationFact(
@@ -759,6 +824,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="filter_optimization"
         ))
 
+    #64
     @Rule(Fact(wrong_datatype=True))
     def rule_datatype_optimization(self):
         self.record(RecommendationFact(
@@ -771,6 +837,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="schema_design"
         ))
 
+    #65
     @Rule(Fact(cursor_used=True))
     def rule_avoid_cursors(self):
         self.record(RecommendationFact(
@@ -783,6 +850,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="query_rewriting"
         ))
 
+    #66
     @Rule(Fact(stored_proc=True))
     def rule_stored_procedure(self):
         self.record(RecommendationFact(
@@ -795,6 +863,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="query_organization"
         ))
 
+    #67
     @Rule(Fact(too_many_joins=True))
     def rule_excessive_joins(self):
         self.record(RecommendationFact(
@@ -807,6 +876,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="schema_design"
         ))
 
+    #68
     @Rule(Fact(union=True) & Fact(too_many_joins=True))
     def rule_union_vs_join_complexity(self):
         self.record(RecommendationFact(
@@ -819,6 +889,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="query_rewriting"
         ))
 
+    #69
     @Rule(Fact(table=MATCH.t, large=True) & Fact(schema_normalized=False))
     def rule_denormalization(self):
         self.record(RecommendationFact(
@@ -831,6 +902,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="schema_design"
         ))
 
+    #70
     @Rule(Fact(subquery=True) & NOT(Fact(correlated_subquery=True)) & Fact(temp_allowed=True))
     def rule_subquery_to_temp_table(self):
         self.record(RecommendationFact(
@@ -843,6 +915,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="query_rewriting"
         ))
 
+    #71
     @Rule(Fact(where=True) & Fact(join=True))
     def rule_use_explain_join(self):
         self.record(RecommendationFact(
@@ -855,6 +928,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="query_analysis"
         ))
 
+    #72
     @Rule(Fact(where=True) & Fact(subquery=True))
     def rule_use_explain_subquery(self):
         self.record(RecommendationFact(
@@ -867,6 +941,7 @@ class QueryOptimizerRules(KnowledgeEngine):
             applies_to="query_analysis"
         ))
 
+    #73
     @Rule(Fact(where=True) & Fact(aggregation=True))
     def rule_use_explain_aggregation(self):
         self.record(RecommendationFact(

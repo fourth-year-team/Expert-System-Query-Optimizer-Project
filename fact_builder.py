@@ -28,7 +28,7 @@ def build_facts(answers):
     if answers.get('cursor_usage'): facts.append(Fact(cursor_used=True))
     if answers.get('stored_procedures'): facts.append(Fact(stored_proc=True))
     if answers.get('excessive_joins'): facts.append(Fact(too_many_joins=True))
-    if answers.get('normalized_schema'): facts.append(Fact(schema_normalized=True))
+    facts.append(Fact(schema_normalized=answers.get('normalized_schema', True)))
     if answers.get('data_type_issues'): facts.append(Fact(wrong_datatype=True))
     if answers.get('result_critical'): facts.append(Fact(fast_response=True))
     if answers.get('intermediate_large'): facts.append(Fact(intermediate_large=True))
@@ -78,7 +78,7 @@ def build_facts(answers):
         facts.append(Fact(select_minimal=True))
         facts.append(Fact(table=table, covering=True))
 
-    has_where = answers.get('index_filter') is not None or answers.get('range_predicate') or answers.get('or_condition')
+    has_where = answers.get('index_filter') == True or answers.get('range_predicate') or answers.get('or_condition')
     if has_where:
         facts.append(Fact(where=True))
 
@@ -172,7 +172,7 @@ def build_facts(answers):
     if answers.get('cte') and answers.get('sufficient_memory', True):
         facts.append(Fact(temp_allowed=True))
 
-    if answers.get('subqueries') and answers.get('sufficient_memory', True) and answers.get('aggregation') or answers.get('correlated_subquery'):
+    if answers.get('subqueries') and answers.get('sufficient_memory', True) and answers.get('group_by') or answers.get('correlated_subquery'):
         facts.append(Fact(temp_allowed=True))
 
     if answers.get('or_condition') and answers.get('index_filter'):
